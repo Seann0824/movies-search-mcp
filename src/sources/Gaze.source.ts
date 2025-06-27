@@ -45,10 +45,6 @@ export class GazeSource extends BaseSource {
         return [];
       }
 
-      // 简单起见，我们先处理第一个最相关的结果
-      // 在实际应用中，可以根据标题和年份进行更精确的匹配
-      const targetMovie = movies[0];
-
       // 返回结果，交由核心验证器进行下一步的可用性检查
       return movies.map((movie) => ({
         url: `https://gaze.run/play/${movie.mid}`,

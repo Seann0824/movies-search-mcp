@@ -23,7 +23,7 @@ export class GazeValidatorService {
     }
 
     const browser = await chromium.launch({
-      headless: false,
+      headless: true,
       channel: "chrome", // Use the system's Chrome browser instead of Chromium
     });
     try {

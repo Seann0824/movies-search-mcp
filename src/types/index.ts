@@ -7,6 +7,7 @@ export interface SearchQuery {
 
 export interface SearchResult {
   url: string;
+  title: string;
   quality: string;
   source: string;
   headers?: Record<string, string>;

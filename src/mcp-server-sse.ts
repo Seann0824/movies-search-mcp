@@ -122,6 +122,7 @@ const createMovieSearchServer = () => {
           results: searchResults.map((result, index) => ({
             id: index + 1,
             url: result.url,
+            title: result.title,
             quality: result.quality,
             source: result.source,
             verified: false,

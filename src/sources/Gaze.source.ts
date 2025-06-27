@@ -48,6 +48,7 @@ export class GazeSource extends BaseSource {
       // 返回结果，交由核心验证器进行下一步的可用性检查
       return movies.map((movie) => ({
         url: `https://gaze.run/play/${movie.mid}`,
+        title: movie.title,
         quality: movie.definition,
         source: this.name,
       }));

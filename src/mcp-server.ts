@@ -8,9 +8,9 @@ import {
   CallToolRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
-import { GazeSource } from "./sources/Gaze.source.js";
-import { GazeValidatorService } from "./core/gaze.validator.js";
-import { SearchQuery, SearchResult } from "./types/index.js";
+import { GazeSource } from "./sources/Gaze.source";
+import { GazeValidatorService } from "./core/gaze.validator";
+import { SearchQuery, SearchResult } from "./types/index";
 
 dotenv.config();
 

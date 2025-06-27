@@ -6,9 +6,9 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import dotenv from "dotenv";
-import { GazeSource } from "./sources/Gaze.source.js";
-import { GazeValidatorService } from "./core/gaze.validator.js";
-import { SearchQuery, SearchResult } from "./types/index.js";
+import { GazeSource } from "./sources/Gaze.source";
+import { GazeValidatorService } from "./core/gaze.validator";
+import { SearchQuery, SearchResult } from "./types/index";
 
 dotenv.config();
 

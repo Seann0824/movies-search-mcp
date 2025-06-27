@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -6,9 +8,9 @@ import {
   CallToolRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
-import { GazeSource } from "./sources/Gaze.source";
-import { GazeValidatorService } from "./core/gaze.validator";
-import { SearchQuery, SearchResult } from "./types";
+import { GazeSource } from "./sources/Gaze.source.js";
+import { GazeValidatorService } from "./core/gaze.validator.js";
+import { SearchQuery, SearchResult } from "./types/index.js";
 
 dotenv.config();
 
@@ -141,7 +143,7 @@ class MovieSearchMCPServer {
       ...(episode && { episode }),
     };
 
-    console.log(`[MCP Server] 开始搜索: ${JSON.stringify(query)}`);
+    console.error(`[MCP Server] 开始搜索: ${JSON.stringify(query)}`);
 
     // 第一步：搜索潜在的播放页面
     const initialResults = await this.gazeSource.find(query);
@@ -157,7 +159,7 @@ class MovieSearchMCPServer {
       };
     }
 
-    console.log(
+    console.error(
       `[MCP Server] 找到 ${initialResults.length} 个潜在结果，开始验证...`
     );
 
@@ -167,7 +169,7 @@ class MovieSearchMCPServer {
         const isValid = await this.gazeValidator.isValid(result.url);
         return isValid ? result : null;
       } catch (error) {
-        console.warn(`[MCP Server] 验证失败 ${result.url}:`, error);
+        console.error(`[MCP Server] 验证失败 ${result.url}:`, error);
         return null;
       }
     });
@@ -176,7 +178,7 @@ class MovieSearchMCPServer {
       (result): result is SearchResult => result !== null
     );
 
-    console.log(
+    console.error(
       `[MCP Server] 验证完成，找到 ${validatedResults.length} 个可播放资源`
     );
 
@@ -219,7 +221,7 @@ class MovieSearchMCPServer {
       throw new Error("URL 是必需的参数");
     }
 
-    console.log(`[MCP Server] 开始验证视频: ${url}`);
+    console.error(`[MCP Server] 开始验证视频: ${url}`);
 
     const isValid = await this.gazeValidator.isValid(url);
 

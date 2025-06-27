@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "movie-search-tool": {
+      "command": "node",
+      "args": [
+        "/Users/sean/Desktop/my-project/movies-search-tool/dist/mcp-server.js"
+      ],
+      "env": {}
+    }
+  }
+}

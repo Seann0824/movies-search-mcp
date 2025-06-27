@@ -1,6 +1,64 @@
-# Movie Search Tool (MCP Server)
+# Movie Search Tool (MCP Server) 🎬
 
-这是一个智能影视资源搜索工具，旨在自动化查找和验证全网影视资源，为用户或 AI 提供直接可播放的有效链接。
+这是一个智能影视资源搜索工具，已改造为 **Model Context Protocol (MCP) Server**，为 AI 客户端提供自动化电影和电视剧搜索功能，返回经过验证的可播放视频链接。
+
+## 🚀 MCP Server 快速使用
+
+### 🌟 SSE 版本（推荐）- 带实时通知
+
+```bash
+# 1. 构建并启动
+npm install
+npm run build
+npm run mcp:sse
+
+# 2. 测试功能
+npm run test:mcp:sse
+```
+
+**特色功能**：
+
+- ✨ **实时通知** - 搜索和验证过程的实时进度更新
+- 🔧 **SDK 顶层封装** - 使用 `McpServer` 类简化开发
+- 🌐 **HTTP 端点** - 便于测试和调试
+
+### 📋 配置 AI 客户端 (Claude Desktop)
+
+在 `~/Library/Application Support/Claude/claude_desktop_config.json` 中添加：
+
+```json
+{
+  "mcpServers": {
+    "movie-search-tool-sse": {
+      "command": "node",
+      "args": [
+        "/path/to/your/project/movies-search-tool/dist/mcp-server-sse.js"
+      ],
+      "env": {}
+    }
+  }
+}
+```
+
+### 🎬 在 AI 中使用
+
+- 🔍 **搜索电影**: "请帮我搜索电影《阿凡达》"
+- 📺 **搜索电视剧**: "请帮我搜索电视剧《人生切割术》"
+- ✅ **验证链接**: "请验证这个视频链接是否可播放"
+
+**实时通知示例**：
+
+```
+ℹ️ 🔍 开始搜索 "阿凡达"...
+ℹ️ 🎯 找到 3 个潜在结果，开始验证...
+ℹ️ ✅ 验证成功: 1080P - https://gaze.run/play/xxx
+ℹ️ 🎉 验证完成！找到 2 个可播放资源
+```
+
+### 📚 详细文档
+
+- [MCP_USAGE.md](./MCP_USAGE.md) - 完整使用指南
+- [SSE_IMPLEMENTATION.md](./SSE_IMPLEMENTATION.md) - SSE 实现详解
 
 ## 🎯 项目状态
 

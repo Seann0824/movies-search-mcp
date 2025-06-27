@@ -47,7 +47,7 @@ class MovieSearchMCPServer {
         tools: [
           {
             name: "search_movie",
-            description: "搜索电影或电视剧资源，返回可播放的视频链接",
+            description: "搜索电影或电视剧资源，返回视频链接列表（不进行验证）",
             inputSchema: {
               type: "object",
               properties: {
@@ -143,10 +143,10 @@ class MovieSearchMCPServer {
 
     console.log(`[MCP Server] 开始搜索: ${JSON.stringify(query)}`);
 
-    // 第一步：搜索潜在的播放页面
-    const initialResults = await this.gazeSource.find(query);
+    // 搜索所有潜在的播放页面（不进行验证）
+    const searchResults = await this.gazeSource.find(query);
 
-    if (initialResults.length === 0) {
+    if (searchResults.length === 0) {
       return {
         content: [
           {
@@ -157,50 +157,19 @@ class MovieSearchMCPServer {
       };
     }
 
-    console.log(
-      `[MCP Server] 找到 ${initialResults.length} 个潜在结果，开始验证...`
-    );
+    console.log(`[MCP Server] 找到 ${searchResults.length} 个资源`);
 
-    // 第二步：并发验证所有找到的链接
-    const validationPromises = initialResults.map(async (result) => {
-      try {
-        const isValid = await this.gazeValidator.isValid(result.url);
-        return isValid ? result : null;
-      } catch (error) {
-        console.warn(`[MCP Server] 验证失败 ${result.url}:`, error);
-        return null;
-      }
-    });
-
-    const validatedResults = (await Promise.all(validationPromises)).filter(
-      (result): result is SearchResult => result !== null
-    );
-
-    console.log(
-      `[MCP Server] 验证完成，找到 ${validatedResults.length} 个可播放资源`
-    );
-
-    if (validatedResults.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `找到了 ${initialResults.length} 个潜在资源，但验证后发现都无法播放。请稍后再试或使用不同的搜索词。`,
-          },
-        ],
-      };
-    }
-
-    // 格式化结果
+    // 格式化结果 - 直接返回所有搜索结果
     const resultText =
       `🎬 搜索结果: "${title}"\n\n` +
-      `✅ 找到 ${validatedResults.length} 个可播放资源:\n\n` +
-      validatedResults
+      `📋 找到 ${searchResults.length} 个资源（未验证可播放性）:\n\n` +
+      searchResults
         .map(
           (result, index) =>
             `${index + 1}. 【${result.quality}】${result.url}\n   来源: ${result.source}`
         )
-        .join("\n\n");
+        .join("\n\n") +
+      `\n\n💡 提示: 使用 validate_video_url 工具来验证特定链接是否可播放`;
 
     return {
       content: [

@@ -43,13 +43,14 @@ class MovieSearchMCPServer {
   }
 
   private setupToolHandlers() {
-    // 注册工具列表处理器
+    // 注册电影搜索工具
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: [
           {
             name: "search_movie",
-            description: "搜索电影或电视剧资源，返回可播放的视频链接",
+            description:
+              "搜索电影或电视剧资源。返回未验证的搜索结果列表，包含标题、链接和质量信息。使用此工具获取候选资源后，请从结果中选择最匹配的链接，然后使用 validate_video_url 工具验证其可播放性。",
             inputSchema: {
               type: "object",
               properties: {
@@ -64,13 +65,13 @@ class MovieSearchMCPServer {
                 },
                 season: {
                   type: "number",
-                  description: "季数（仅限电视剧）",
                   minimum: 1,
+                  description: "季数（仅限电视剧）",
                 },
                 episode: {
                   type: "number",
-                  description: "集数（仅限电视剧）",
                   minimum: 1,
+                  description: "集数（仅限电视剧）",
                 },
               },
               required: ["title", "type"],
@@ -78,7 +79,8 @@ class MovieSearchMCPServer {
           },
           {
             name: "validate_video_url",
-            description: "验证视频链接是否可播放",
+            description:
+              "验证特定视频链接的可播放性。接收一个视频播放页面的 URL，返回该链接是否可以正常播放。只有通过验证的链接才能确保用户可以观看。",
             inputSchema: {
               type: "object",
               properties: {
@@ -94,149 +96,139 @@ class MovieSearchMCPServer {
       };
     });
 
-    // 注册工具调用处理器
-    this.server.setRequestHandler(
-      CallToolRequestSchema,
-      async (request: CallToolRequest) => {
-        const { name, arguments: args } = request.params;
+    // 处理工具调用
+    this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
+      const { name, arguments: args } = request.params;
 
-        try {
-          switch (name) {
-            case "search_movie":
-              return await this.handleMovieSearch(args as any);
-            case "validate_video_url":
-              return await this.handleVideoValidation(args as any);
-            default:
-              throw new Error(`未知的工具: ${name}`);
-          }
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `错误: ${error instanceof Error ? error.message : String(error)}`,
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    );
-  }
-
-  private async handleMovieSearch(args: {
-    title: string;
-    type: "movie" | "tv";
-    season?: number;
-    episode?: number;
-  }) {
-    const { title, type, season, episode } = args;
-
-    if (!title || !type) {
-      throw new Error("标题和类型是必需的参数");
-    }
-
-    const query: SearchQuery = {
-      title,
-      type,
-      ...(season && { season }),
-      ...(episode && { episode }),
-    };
-
-    console.error(`[MCP Server] 开始搜索: ${JSON.stringify(query)}`);
-
-    // 第一步：搜索潜在的播放页面
-    const initialResults = await this.gazeSource.find(query);
-
-    if (initialResults.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `未找到 "${title}" 的任何资源。请尝试使用不同的关键词。`,
-          },
-        ],
-      };
-    }
-
-    console.error(
-      `[MCP Server] 找到 ${initialResults.length} 个潜在结果，开始验证...`
-    );
-
-    // 第二步：并发验证所有找到的链接
-    const validationPromises = initialResults.map(async (result) => {
       try {
-        const isValid = await this.gazeValidator.isValid(result.url);
-        return isValid ? result : null;
+        switch (name) {
+          case "search_movie": {
+            const { title, type, season, episode } = args as {
+              title: string;
+              type: "movie" | "tv";
+              season?: number;
+              episode?: number;
+            };
+
+            console.error(`[MCP Server] 开始搜索: ${title} (${type})`);
+
+            const query: SearchQuery = {
+              title,
+              type,
+              ...(season && { season }),
+              ...(episode && { episode }),
+            };
+
+            // 搜索所有潜在的播放页面（不进行验证）
+            const searchResults = await this.gazeSource.find(query);
+
+            if (searchResults.length === 0) {
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: JSON.stringify(
+                      {
+                        success: false,
+                        message: `未找到 "${title}" 的任何资源`,
+                        results: [],
+                        total: 0,
+                        next_action: "请尝试使用不同的关键词重新搜索",
+                      },
+                      null,
+                      2
+                    ),
+                  },
+                ],
+              };
+            }
+
+            console.error(`[MCP Server] 找到 ${searchResults.length} 个资源`);
+
+            // 返回结构化的搜索结果
+            const structuredResults = {
+              success: true,
+              title: title,
+              type: type,
+              ...(season && { season }),
+              ...(episode && { episode }),
+              total: searchResults.length,
+              results: searchResults.map((result, index) => ({
+                id: index + 1,
+                url: result.url,
+                quality: result.quality,
+                source: result.source,
+                verified: false,
+              })),
+              next_action:
+                "请从上述结果中选择最合适的链接，然后使用 validate_video_url 工具验证其可播放性",
+            };
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(structuredResults, null, 2),
+                },
+              ],
+            };
+          }
+
+          case "validate_video_url": {
+            const { url } = args as { url: string };
+
+            console.error(`[MCP Server] 开始验证视频: ${url}`);
+
+            const isValid = await this.gazeValidator.isValid(url);
+
+            const result = {
+              success: true,
+              url: url,
+              valid: isValid,
+              status: isValid ? "可播放" : "无法播放",
+              message: isValid
+                ? "视频链接验证成功，可以正常播放"
+                : "视频链接验证失败，可能已失效或无法访问",
+              timestamp: new Date().toISOString(),
+            };
+
+            return {
+              content: [
+                {
+                  type: "text",
+                  text: JSON.stringify(result, null, 2),
+                },
+              ],
+            };
+          }
+
+          default:
+            throw new Error(`未知工具: ${name}`);
+        }
       } catch (error) {
-        console.error(`[MCP Server] 验证失败 ${result.url}:`, error);
-        return null;
+        const errorMessage =
+          error instanceof Error ? error.message : String(error);
+        console.error(`[MCP Server] 工具调用错误:`, error);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(
+                {
+                  success: false,
+                  error: errorMessage,
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2
+              ),
+            },
+          ],
+          isError: true,
+        };
       }
     });
-
-    const validatedResults = (await Promise.all(validationPromises)).filter(
-      (result): result is SearchResult => result !== null
-    );
-
-    console.error(
-      `[MCP Server] 验证完成，找到 ${validatedResults.length} 个可播放资源`
-    );
-
-    if (validatedResults.length === 0) {
-      return {
-        content: [
-          {
-            type: "text",
-            text: `找到了 ${initialResults.length} 个潜在资源，但验证后发现都无法播放。请稍后再试或使用不同的搜索词。`,
-          },
-        ],
-      };
-    }
-
-    // 格式化结果
-    const resultText =
-      `🎬 搜索结果: "${title}"\n\n` +
-      `✅ 找到 ${validatedResults.length} 个可播放资源:\n\n` +
-      validatedResults
-        .map(
-          (result, index) =>
-            `${index + 1}. 【${result.quality}】${result.url}\n   来源: ${result.source}`
-        )
-        .join("\n\n");
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: resultText,
-        },
-      ],
-    };
-  }
-
-  private async handleVideoValidation(args: { url: string }) {
-    const { url } = args;
-
-    if (!url) {
-      throw new Error("URL 是必需的参数");
-    }
-
-    console.error(`[MCP Server] 开始验证视频: ${url}`);
-
-    const isValid = await this.gazeValidator.isValid(url);
-
-    const resultText = isValid
-      ? `✅ 视频链接验证成功！\n\n链接: ${url}\n状态: 可播放`
-      : `❌ 视频链接验证失败！\n\n链接: ${url}\n状态: 无法播放或加载失败`;
-
-    return {
-      content: [
-        {
-          type: "text",
-          text: resultText,
-        },
-      ],
-    };
   }
 
   async run() {

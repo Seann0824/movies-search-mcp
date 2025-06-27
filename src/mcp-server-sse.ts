@@ -39,7 +39,7 @@ const createMovieSearchServer = () => {
   // 注册电影搜索工具
   server.tool(
     "search_movie",
-    "搜索电影或电视剧资源，返回可播放的视频链接",
+    "搜索电影或电视剧资源。返回未验证的搜索结果列表，包含标题、链接和质量信息。使用此工具获取候选资源后，请从结果中选择最匹配的链接，然后使用 validate_video_url 工具验证其可播放性。",
     {
       title: z.string().describe("电影或电视剧的标题"),
       type: z
@@ -68,10 +68,10 @@ const createMovieSearchServer = () => {
           ...(episode && { episode }),
         };
 
-        // 第一步：搜索潜在的播放页面
-        const initialResults = await gazeSource.find(query);
+        // 搜索所有潜在的播放页面（不进行验证）
+        const searchResults = await gazeSource.find(query);
 
-        if (initialResults.length === 0) {
+        if (searchResults.length === 0) {
           await sendNotification({
             method: "notifications/message",
             params: {
@@ -84,103 +84,57 @@ const createMovieSearchServer = () => {
             content: [
               {
                 type: "text",
-                text: `未找到 "${title}" 的任何资源。请尝试使用不同的关键词。`,
+                text: JSON.stringify(
+                  {
+                    success: false,
+                    message: `未找到 "${title}" 的任何资源`,
+                    results: [],
+                    total: 0,
+                    next_action: "请尝试使用不同的关键词重新搜索",
+                  },
+                  null,
+                  2
+                ),
               },
             ],
           };
         }
 
-        // 发送找到潜在结果的通知
+        console.error(`[MCP SSE Server] 找到 ${searchResults.length} 个资源`);
+
+        // 发送搜索完成通知
         await sendNotification({
           method: "notifications/message",
           params: {
             level: "info",
-            data: `🎯 找到 ${initialResults.length} 个潜在结果，开始验证...`,
+            data: `🎉 搜索完成！找到 ${searchResults.length} 个资源（未验证）`,
           },
         });
 
-        // 第二步：并发验证所有找到的链接
-        const validationPromises = initialResults.map(async (result, index) => {
-          try {
-            // 发送验证进度通知
-            await sendNotification({
-              method: "notifications/message",
-              params: {
-                level: "info",
-                data: `🔍 验证链接 ${index + 1}/${initialResults.length}: ${result.quality}`,
-              },
-            });
-
-            const isValid = await gazeValidator.isValid(result.url);
-
-            if (isValid) {
-              await sendNotification({
-                method: "notifications/message",
-                params: {
-                  level: "info",
-                  data: `✅ 验证成功: ${result.quality} - ${result.url}`,
-                },
-              });
-            }
-
-            return isValid ? result : null;
-          } catch (error) {
-            console.error(`[MCP SSE Server] 验证失败 ${result.url}:`, error);
-            await sendNotification({
-              method: "notifications/message",
-              params: {
-                level: "error",
-                data: `❌ 验证失败: ${result.quality}`,
-              },
-            });
-            return null;
-          }
-        });
-
-        const validatedResults = (await Promise.all(validationPromises)).filter(
-          (result): result is SearchResult => result !== null
-        );
-
-        console.error(
-          `[MCP SSE Server] 验证完成，找到 ${validatedResults.length} 个可播放资源`
-        );
-
-        // 发送验证完成通知
-        await sendNotification({
-          method: "notifications/message",
-          params: {
-            level: "info",
-            data: `🎉 验证完成！找到 ${validatedResults.length} 个可播放资源`,
-          },
-        });
-
-        if (validatedResults.length === 0) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `找到了 ${initialResults.length} 个潜在资源，但验证后发现都无法播放。请稍后再试或使用不同的搜索词。`,
-              },
-            ],
-          };
-        }
-
-        // 格式化结果
-        const resultText =
-          `🎬 搜索结果: "${title}"\n\n` +
-          `✅ 找到 ${validatedResults.length} 个可播放资源:\n\n` +
-          validatedResults
-            .map(
-              (result, index) =>
-                `${index + 1}. 【${result.quality}】${result.url}\n   来源: ${result.source}`
-            )
-            .join("\n\n");
+        // 返回结构化的搜索结果
+        const structuredResults = {
+          success: true,
+          title: title,
+          type: type,
+          ...(season && { season }),
+          ...(episode && { episode }),
+          total: searchResults.length,
+          results: searchResults.map((result, index) => ({
+            id: index + 1,
+            url: result.url,
+            quality: result.quality,
+            source: result.source,
+            verified: false,
+          })),
+          next_action:
+            "请从上述结果中选择最合适的链接，然后使用 validate_video_url 工具验证其可播放性",
+        };
 
         return {
           content: [
             {
               type: "text",
-              text: resultText,
+              text: JSON.stringify(structuredResults, null, 2),
             },
           ],
         };
@@ -201,7 +155,16 @@ const createMovieSearchServer = () => {
           content: [
             {
               type: "text",
-              text: `错误: ${errorMessage}`,
+              text: JSON.stringify(
+                {
+                  success: false,
+                  error: errorMessage,
+                  results: [],
+                  total: 0,
+                },
+                null,
+                2
+              ),
             },
           ],
           isError: true,
@@ -213,7 +176,7 @@ const createMovieSearchServer = () => {
   // 注册视频验证工具
   server.tool(
     "validate_video_url",
-    "验证视频链接是否可播放",
+    "验证特定视频链接的可播放性。接收一个视频播放页面的 URL，返回该链接是否可以正常播放。只有通过验证的链接才能确保用户可以观看。",
     {
       url: z.string().describe("要验证的视频播放页面 URL"),
     },
@@ -231,9 +194,16 @@ const createMovieSearchServer = () => {
 
         const isValid = await gazeValidator.isValid(url);
 
-        const resultText = isValid
-          ? `✅ 视频链接验证成功！\n\n链接: ${url}\n状态: 可播放`
-          : `❌ 视频链接验证失败！\n\n链接: ${url}\n状态: 无法播放或加载失败`;
+        const result = {
+          success: true,
+          url: url,
+          valid: isValid,
+          status: isValid ? "可播放" : "无法播放",
+          message: isValid
+            ? "视频链接验证成功，可以正常播放"
+            : "视频链接验证失败，可能已失效或无法访问",
+          timestamp: new Date().toISOString(),
+        };
 
         await sendNotification({
           method: "notifications/message",
@@ -249,7 +219,7 @@ const createMovieSearchServer = () => {
           content: [
             {
               type: "text",
-              text: resultText,
+              text: JSON.stringify(result, null, 2),
             },
           ],
         };
@@ -270,7 +240,17 @@ const createMovieSearchServer = () => {
           content: [
             {
               type: "text",
-              text: `错误: ${errorMessage}`,
+              text: JSON.stringify(
+                {
+                  success: false,
+                  url: url,
+                  valid: false,
+                  error: errorMessage,
+                  timestamp: new Date().toISOString(),
+                },
+                null,
+                2
+              ),
             },
           ],
           isError: true,
@@ -290,7 +270,7 @@ app.use(express.json());
 const transports: Record<string, SSEServerTransport> = {};
 
 // SSE 端点 - 建立 SSE 流
-app.get("/mcp", async (req, res) => {
+app.get("/sse", async (req, res) => {
   console.error("🔗 建立 SSE 连接...");
 
   try {
@@ -366,7 +346,7 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.error(`🎬 电影搜索工具 MCP Server (SSE) 启动成功`);
   console.error(`📡 监听端口: ${PORT}`);
-  console.error(`🔗 SSE 端点: http://localhost:${PORT}/mcp`);
+  console.error(`🔗 SSE 端点: http://localhost:${PORT}/sse`);
   console.error(`📨 消息端点: http://localhost:${PORT}/messages`);
   console.error(`💚 健康检查: http://localhost:${PORT}/health`);
 });

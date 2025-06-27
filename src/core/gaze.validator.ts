@@ -107,15 +107,37 @@ export class GazeValidatorService {
    */
   private waitForVideoElement(page: Page): Promise<boolean> {
     return new Promise((resolve) => {
+      let isResolved = false;
+
+      const cleanup = () => {
+        if (timeout) clearTimeout(timeout);
+        if (checkInterval) clearInterval(checkInterval);
+      };
+
+      const resolveOnce = (result: boolean) => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        }
+      };
+
       const timeout = setTimeout(() => {
         console.log(
           "[GazeValidator] Validation timed out. Video element with blob src not detected."
         );
-        resolve(false);
+        resolveOnce(false);
       }, 30000); // 30-second overall timeout
 
-      // Poll the video element every 500ms to check for blob src and playability
+      // Poll the video element every 1 second to check for blob src and playability
       const checkInterval = setInterval(async () => {
+        // 检查页面是否已关闭
+        if (page.isClosed()) {
+          console.log("[GazeValidator] Page is closed, stopping validation");
+          resolveOnce(false);
+          return;
+        }
+
         try {
           const videoStatus: {
             src: string | null;
@@ -148,9 +170,7 @@ export class GazeValidatorService {
               console.log(
                 `[GazeValidator] Video error detected: ${videoStatus.error}`
               );
-              clearTimeout(timeout);
-              clearInterval(checkInterval);
-              resolve(false);
+              resolveOnce(false);
               return;
             }
 
@@ -158,27 +178,46 @@ export class GazeValidatorService {
             // readyState >= 3 means we can play through without stalling
             if (videoStatus.readyState >= 2 && videoStatus.duration > 0) {
               // Further verify by attempting to play the video briefly
-              const playTestResult = await this.testVideoPlayback(page);
-              if (playTestResult) {
+              try {
+                const playTestResult = await this.testVideoPlayback(page);
+                if (playTestResult) {
+                  console.log(
+                    `[GazeValidator] Success: Video is confirmed playable`
+                  );
+                  resolveOnce(true);
+                } else {
+                  console.log(
+                    `[GazeValidator] Video has blob src but failed playback test`
+                  );
+                  resolveOnce(false);
+                }
+              } catch (playTestError) {
                 console.log(
-                  `[GazeValidator] Success: Video is confirmed playable`
+                  `[GazeValidator] Playback test failed: ${playTestError}`
                 );
-                clearTimeout(timeout);
-                clearInterval(checkInterval);
-                resolve(true);
-              } else {
-                console.log(
-                  `[GazeValidator] Video has blob src but failed playback test`
-                );
-                clearTimeout(timeout);
-                clearInterval(checkInterval);
-                resolve(false);
+                resolveOnce(false);
               }
             }
           }
         } catch (error) {
-          // Continue polling even if there's an error
-          console.log(`[GazeValidator] Error during video check: ${error}`);
+          // 如果是页面关闭错误，停止验证
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage.includes(
+              "Target page, context or browser has been closed"
+            )
+          ) {
+            console.log(
+              "[GazeValidator] Page closed during validation, stopping"
+            );
+            resolveOnce(false);
+            return;
+          }
+          // 其他错误继续轮询，但不打印过多日志
+          console.log(
+            `[GazeValidator] Error during video check: ${errorMessage}`
+          );
         }
       }, 1000); // Check every 1 second for more thorough validation
     });
@@ -189,6 +228,12 @@ export class GazeValidatorService {
    */
   private async testVideoPlayback(page: Page): Promise<boolean> {
     try {
+      // 检查页面是否已关闭
+      if (page.isClosed()) {
+        console.log("[GazeValidator] Page is closed, skipping playback test");
+        return false;
+      }
+
       const playbackTest = await page.evaluate(`
         (() => {
           return new Promise((resolve) => {
@@ -245,7 +290,9 @@ export class GazeValidatorService {
 
       return playbackTest as boolean;
     } catch (error) {
-      console.log(`[GazeValidator] Playback test error: ${error}`);
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      console.log(`[GazeValidator] Playback test error: ${errorMessage}`);
       return false;
     }
   }

@@ -1,6 +1,11 @@
-import { chromium, Page } from "playwright";
+import { chromium } from "playwright-extra";
+import stealth from "puppeteer-extra-plugin-stealth";
+import { Page } from "playwright";
 import { BaseSource } from "./BaseSource";
 import { SearchQuery, SearchResult } from "../types";
+
+// Apply the stealth plugin
+chromium.use(stealth());
 
 interface GazeMovieItem {
   id: number;

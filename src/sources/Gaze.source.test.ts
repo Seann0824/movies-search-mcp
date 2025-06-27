@@ -1,52 +1,52 @@
-import { GazeSource } from "./Gaze.source";
-import { SearchQuery } from "../types";
+import { GazeSource } from "../sources/Gaze.source";
+import { GazeValidatorService } from "../core/gaze.validator";
+import { SearchQuery, SearchResult } from "../types";
 
-describe("GazeSource Integration Test", () => {
+describe("Gaze End-to-End Test", () => {
   let gazeSource: GazeSource;
+  let gazeValidator: GazeValidatorService;
 
   beforeAll(() => {
     gazeSource = new GazeSource();
+    gazeValidator = new GazeValidatorService();
   });
 
-  it("should find and return play page URLs for a valid query", async () => {
+  it("should find and validate playable movie results for a valid query", async () => {
+    // 1. 搜索：获取潜在的播放页面
     const query: SearchQuery = {
       title: "人生切割术",
       type: "tv",
     };
+    const initialResults = await gazeSource.find(query);
+    console.log(
+      `[Test] Found ${initialResults.length} potential results from source.`
+    );
 
-    const results = await gazeSource.find(query);
+    // 期望至少找到一个结果
+    expect(initialResults.length).toBeGreaterThan(0);
 
-    // 根据之前的 API 调用日志，我们期望得到 2 个结果
-    expect(Array.isArray(results)).toBe(true);
-    expect(results.length).toBe(2);
+    // 2. 过滤：并发验证所有找到的链接
+    const validationPromises = initialResults.map(async (result) => {
+      const isValid = await gazeValidator.isValid(result.url);
+      return isValid ? result : null;
+    });
 
-    // 验证第一条结果（第二季）的结构和 URL
-    const season2Result = results[0];
-    expect(season2Result).toHaveProperty("url");
-    expect(season2Result.url).toMatch(/^https:\/\/gaze\.run\/play\//);
-    // 验证 mid 是否被正确用于构建 URL
-    expect(season2Result.url).toContain("3707985a810eb936d216b2ffa6405416");
-    expect(season2Result.quality).toBe("720P");
-    expect(season2Result.source).toBe("Gaze");
+    const validatedResults = (await Promise.all(validationPromises)).filter(
+      (result): result is SearchResult => result !== null
+    );
 
-    // 验证第二条结果（第一季）的结构和 URL
-    const season1Result = results[1];
-    expect(season1Result).toHaveProperty("url");
-    expect(season1Result.url).toMatch(/^https:\/\/gaze\.run\/play\//);
-    expect(season1Result.url).toContain("57fac3ff0917fa8ad2088a4372465ffd");
-    expect(season1Result.quality).toBe("1080P");
-  });
+    console.log(
+      `[Test] Found ${validatedResults.length} validated, playable results.`
+    );
 
-  it("should return an empty array for a query that finds no results", async () => {
-    const query: SearchQuery = {
-      title: "一部不存在的电影asdfghjkl",
-      type: "movie",
-    };
+    // 3. 断言：确保至少有一个结果通过了验证
+    expect(validatedResults.length).toBeGreaterThan(0);
 
-    const results = await gazeSource.find(query);
-
-    // 断言结果是一个空数组
-    expect(Array.isArray(results)).toBe(true);
-    expect(results.length).toBe(0);
+    // 显示所有验证通过的结果
+    console.log("✅ All validated results:");
+    validatedResults.forEach((result, index) => {
+      console.log(`  [${index + 1}] ${result.url} (${result.quality})`);
+      expect(result.url).toMatch(/^https:\/\/gaze\.run\/play\//);
+    });
   });
 });

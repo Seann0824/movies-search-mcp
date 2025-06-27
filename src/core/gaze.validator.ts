@@ -103,7 +103,7 @@ export class GazeValidatorService {
 
   /**
    * Monitors the video element for a valid blob src URL, which indicates successful video loading.
-   * This method returns a promise that resolves to true if a blob URL is found, otherwise false.
+   * This method returns a promise that resolves to true if a blob URL is found within 10 seconds, otherwise false.
    */
   private waitForVideoElement(page: Page): Promise<boolean> {
     return new Promise((resolve) => {
@@ -124,10 +124,10 @@ export class GazeValidatorService {
 
       const timeout = setTimeout(() => {
         console.log(
-          "[GazeValidator] Validation timed out. Video element with blob src not detected."
+          "[GazeValidator] Validation timed out after 10 seconds. Video element with blob src not detected."
         );
         resolveOnce(false);
-      }, 30000); // 30-second overall timeout
+      }, 10000); // 10-second overall timeout
 
       // Poll the video element every 1 second to check for blob src and playability
       const checkInterval = setInterval(async () => {
@@ -275,7 +275,7 @@ export class GazeValidatorService {
               });
             }
 
-            // Timeout after 5 seconds if no progress
+            // Timeout after 3 seconds if no progress
             setTimeout(() => {
               if (!hasProgressed) {
                 video.removeEventListener('timeupdate', timeUpdateHandler);
@@ -283,7 +283,7 @@ export class GazeValidatorService {
                 video.pause();
                 resolve(false);
               }
-            }, 5000);
+            }, 3000);
           });
         })()
       `);

@@ -99,13 +99,25 @@ class MovieSearchMCPServer {
           {
             name: "validate_video_url",
             description:
-              "验证特定视频链接的可播放性。接收一个视频播放页面的 URL，返回该链接是否可以正常播放。只有通过验证的链接才能确保用户可以观看。",
+              "验证特定视频链接的可播放性。接收一个视频播放页面的 URL 或 URL 数组，返回该链接是否可以正常播放。支持批量验证多个链接。只有通过验证的链接才能确保用户可以观看。",
             inputSchema: {
               type: "object",
               properties: {
                 url: {
-                  type: "string",
-                  description: "要验证的视频播放页面 URL",
+                  oneOf: [
+                    {
+                      type: "string",
+                      description: "要验证的视频播放页面 URL",
+                    },
+                    {
+                      type: "array",
+                      items: {
+                        type: "string",
+                      },
+                      description: "要批量验证的视频播放页面 URL 数组",
+                    },
+                  ],
+                  description: "要验证的视频播放页面 URL（单个或数组）",
                 },
               },
               required: ["url"],
@@ -199,31 +211,76 @@ class MovieSearchMCPServer {
           }
 
           case "validate_video_url": {
-            const { url } = args as { url: string };
+            const { url } = args as { url: string | string[] };
 
-            console.error(`[MCP Server] 开始验证视频: ${url}`);
+            console.error(`[MCP Server] 开始验证视频:`, url);
 
-            // 根据URL选择合适的验证器
-            const validator = this.getValidatorForUrl(url);
-            const validatorName = url.includes("gaze.run")
-              ? "Gaze"
-              : url.includes("shenqizhe.com")
-                ? "ShenQiZhe"
-                : "Default";
+            // 处理单个 URL 或 URL 数组
+            const urls = Array.isArray(url) ? url : [url];
+            console.error(`[MCP Server] 共需验证 ${urls.length} 个链接`);
 
-            console.error(`[MCP Server] 使用 ${validatorName} 验证器`);
+            // 并行验证所有 URL
+            const validationPromises = urls.map(async (singleUrl) => {
+              try {
+                // 根据URL选择合适的验证器
+                const validator = this.getValidatorForUrl(singleUrl);
+                const validatorName = singleUrl.includes("gaze.run")
+                  ? "Gaze"
+                  : singleUrl.includes("shenqizhe.com")
+                    ? "ShenQiZhe"
+                    : "Default";
 
-            const isValid = await validator.isValid(url);
+                console.error(
+                  `[MCP Server] 验证 ${singleUrl} - 使用 ${validatorName} 验证器`
+                );
+
+                const isValid = await validator.isValid(singleUrl);
+
+                return {
+                  url: singleUrl,
+                  valid: isValid,
+                  validator: validatorName,
+                  status: isValid ? "可播放" : "无法播放",
+                  message: isValid
+                    ? "视频链接验证成功，可以正常播放"
+                    : "视频链接验证失败，可能已失效或无法访问",
+                  timestamp: new Date().toISOString(),
+                };
+              } catch (error) {
+                const errorMessage =
+                  error instanceof Error ? error.message : String(error);
+                console.error(
+                  `[MCP Server] 验证 ${singleUrl} 时发生错误:`,
+                  error
+                );
+
+                return {
+                  url: singleUrl,
+                  valid: false,
+                  validator: "Unknown",
+                  status: "验证失败",
+                  message: `验证过程中发生错误: ${errorMessage}`,
+                  error: errorMessage,
+                  timestamp: new Date().toISOString(),
+                };
+              }
+            });
+
+            const validationResults = await Promise.all(validationPromises);
+
+            // 统计结果
+            const validCount = validationResults.filter(
+              (result) => result.valid
+            ).length;
+            const totalCount = validationResults.length;
 
             const result = {
               success: true,
-              url: url,
-              valid: isValid,
-              validator: validatorName,
-              status: isValid ? "可播放" : "无法播放",
-              message: isValid
-                ? "视频链接验证成功，可以正常播放"
-                : "视频链接验证失败，可能已失效或无法访问",
+              total: totalCount,
+              valid: validCount,
+              invalid: totalCount - validCount,
+              results: validationResults,
+              summary: `共验证 ${totalCount} 个链接，${validCount} 个可播放，${totalCount - validCount} 个无法播放`,
               timestamp: new Date().toISOString(),
             };
 

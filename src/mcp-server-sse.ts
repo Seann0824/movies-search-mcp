@@ -199,55 +199,131 @@ const createMovieSearchServer = () => {
   // 注册视频验证工具
   server.tool(
     "validate_video_url",
-    "验证特定视频链接的可播放性。接收一个视频播放页面的 URL，返回该链接是否可以正常播放。只有通过验证的链接才能确保用户可以观看。",
+    "验证特定视频链接的可播放性。接收一个视频播放页面的 URL 或 URL 数组，返回该链接是否可以正常播放。支持批量验证多个链接。只有通过验证的链接才能确保用户可以观看。",
     {
-      url: z.string().describe("要验证的视频播放页面 URL"),
+      url: z
+        .union([
+          z.string().describe("要验证的视频播放页面 URL"),
+          z.array(z.string()).describe("要批量验证的视频播放页面 URL 数组"),
+        ])
+        .describe("要验证的视频播放页面 URL（单个或数组）"),
     },
     async ({ url }, { sendNotification }) => {
       try {
-        console.error(`[MCP SSE Server] 开始验证视频: ${url}`);
+        console.error(`[MCP SSE Server] 开始验证视频:`, url);
 
-        // 根据URL选择合适的验证器
-        const validator = getValidatorForUrl(url);
-        const validatorName = url.includes("gaze.run")
-          ? "Gaze"
-          : url.includes("shenqizhe.com")
-            ? "ShenQiZhe"
-            : "Default";
-
-        console.error(`[MCP SSE Server] 使用 ${validatorName} 验证器`);
+        // 处理单个 URL 或 URL 数组
+        const urls = Array.isArray(url) ? url : [url];
+        console.error(`[MCP SSE Server] 共需验证 ${urls.length} 个链接`);
 
         await sendNotification({
           method: "notifications/message",
           params: {
             level: "info",
-            data: `🔍 开始使用 ${validatorName} 验证器验证视频链接...`,
+            data: `🔍 开始批量验证 ${urls.length} 个视频链接...`,
           },
         });
 
-        const isValid = await validator.isValid(url);
+        // 并行验证所有 URL
+        const validationPromises = urls.map(async (singleUrl, index) => {
+          try {
+            // 根据URL选择合适的验证器
+            const validator = getValidatorForUrl(singleUrl);
+            const validatorName = singleUrl.includes("gaze.run")
+              ? "Gaze"
+              : singleUrl.includes("shenqizhe.com")
+                ? "ShenQiZhe"
+                : "Default";
 
-        const result = {
-          success: true,
-          url: url,
-          valid: isValid,
-          validator: validatorName,
-          status: isValid ? "可播放" : "无法播放",
-          message: isValid
-            ? "视频链接验证成功，可以正常播放"
-            : "视频链接验证失败，可能已失效或无法访问",
-          timestamp: new Date().toISOString(),
-        };
+            console.error(
+              `[MCP SSE Server] 验证 [${index + 1}/${urls.length}] ${singleUrl} - 使用 ${validatorName} 验证器`
+            );
+
+            await sendNotification({
+              method: "notifications/message",
+              params: {
+                level: "info",
+                data: `🔍 [${index + 1}/${urls.length}] 使用 ${validatorName} 验证器验证中...`,
+              },
+            });
+
+            const isValid = await validator.isValid(singleUrl);
+
+            const result = {
+              url: singleUrl,
+              valid: isValid,
+              validator: validatorName,
+              status: isValid ? "可播放" : "无法播放",
+              message: isValid
+                ? "视频链接验证成功，可以正常播放"
+                : "视频链接验证失败，可能已失效或无法访问",
+              timestamp: new Date().toISOString(),
+            };
+
+            await sendNotification({
+              method: "notifications/message",
+              params: {
+                level: isValid ? "info" : "warning",
+                data: isValid
+                  ? `✅ [${index + 1}/${urls.length}] 验证成功 (${validatorName})`
+                  : `❌ [${index + 1}/${urls.length}] 验证失败 (${validatorName})`,
+              },
+            });
+
+            return result;
+          } catch (error) {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            console.error(
+              `[MCP SSE Server] 验证 ${singleUrl} 时发生错误:`,
+              error
+            );
+
+            await sendNotification({
+              method: "notifications/message",
+              params: {
+                level: "error",
+                data: `❌ [${index + 1}/${urls.length}] 验证出错: ${errorMessage}`,
+              },
+            });
+
+            return {
+              url: singleUrl,
+              valid: false,
+              validator: "Unknown",
+              status: "验证失败",
+              message: `验证过程中发生错误: ${errorMessage}`,
+              error: errorMessage,
+              timestamp: new Date().toISOString(),
+            };
+          }
+        });
+
+        const validationResults = await Promise.all(validationPromises);
+
+        // 统计结果
+        const validCount = validationResults.filter(
+          (result) => result.valid
+        ).length;
+        const totalCount = validationResults.length;
 
         await sendNotification({
           method: "notifications/message",
           params: {
-            level: isValid ? "info" : "warning",
-            data: isValid
-              ? `✅ 验证成功，视频可播放 (${validatorName})`
-              : `❌ 验证失败，视频无法播放 (${validatorName})`,
+            level: "info",
+            data: `🎉 批量验证完成！${validCount}/${totalCount} 个链接可播放`,
           },
         });
+
+        const result = {
+          success: true,
+          total: totalCount,
+          valid: validCount,
+          invalid: totalCount - validCount,
+          results: validationResults,
+          summary: `共验证 ${totalCount} 个链接，${validCount} 个可播放，${totalCount - validCount} 个无法播放`,
+          timestamp: new Date().toISOString(),
+        };
 
         return {
           content: [

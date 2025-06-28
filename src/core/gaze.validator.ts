@@ -3,6 +3,7 @@ import stealth from "puppeteer-extra-plugin-stealth";
 import { Page, Response } from "playwright";
 import * as fs from "fs";
 import * as path from "path";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -36,20 +37,18 @@ export class GazeValidatorService {
       await context.addInitScript(() => {
         // @ts-ignore
         console.clear = () =>
-          console.log(
-            "[GazeValidator] console.clear() was called and blocked."
-          );
+          logger.log("[GazeValidator] console.clear() was called and blocked.");
       });
 
       const page = await context.newPage();
 
       // --- Capture Console Errors ---
       page.on("pageerror", (error) => {
-        console.error(`[GazeValidator] Page Error: ${error.message}`);
+        logger.error(`[GazeValidator] Page Error: ${error.message}`);
       });
       page.on("console", async (msg) => {
         if (msg.type() === "error") {
-          console.error(`[GazeValidator] Console Error: ${msg.text()}`);
+          logger.error(`[GazeValidator] Console Error: ${msg.text()}`);
         }
       });
       // --- END ---
@@ -81,12 +80,12 @@ export class GazeValidatorService {
       const playButtonLocator = page.locator("button.vjs-big-play-button");
       try {
         await playButtonLocator.waitFor({ state: "visible", timeout: 10000 });
-        console.log(
+        logger.log(
           "[GazeValidator] Play button is visible. Clicking to start playback."
         );
         await playButtonLocator.click({ timeout: 3000 });
       } catch (error) {
-        console.warn(
+        logger.warn(
           "[GazeValidator] Could not find or click the play button. The video might autoplay or be structured differently."
         );
       }
@@ -94,7 +93,7 @@ export class GazeValidatorService {
       // Wait for the video element to have a valid blob src
       return await videoFoundPromise;
     } catch (error) {
-      console.error(`[GazeValidator] Error validating ${playPageUrl}:`, error);
+      logger.error(`[GazeValidator] Error validating ${playPageUrl}:`, error);
       return false;
     } finally {
       await browser.close();
@@ -123,7 +122,7 @@ export class GazeValidatorService {
       };
 
       const timeout = setTimeout(() => {
-        console.log(
+        logger.log(
           "[GazeValidator] Validation timed out after 10 seconds. Video element with blob src not detected."
         );
         resolveOnce(false);
@@ -133,7 +132,7 @@ export class GazeValidatorService {
       const checkInterval = setInterval(async () => {
         // 检查页面是否已关闭
         if (page.isClosed()) {
-          console.log("[GazeValidator] Page is closed, stopping validation");
+          logger.log("[GazeValidator] Page is closed, stopping validation");
           resolveOnce(false);
           return;
         }
@@ -160,14 +159,14 @@ export class GazeValidatorService {
 
           // Check if we have a blob URL
           if (videoStatus.src && videoStatus.src.startsWith("blob:")) {
-            console.log(`[GazeValidator] Found blob src: ${videoStatus.src}`);
-            console.log(
+            logger.log(`[GazeValidator] Found blob src: ${videoStatus.src}`);
+            logger.log(
               `[GazeValidator] Video readyState: ${videoStatus.readyState}, duration: ${videoStatus.duration}`
             );
 
             // Check for video errors
             if (videoStatus.error) {
-              console.log(
+              logger.log(
                 `[GazeValidator] Video error detected: ${videoStatus.error}`
               );
               resolveOnce(false);
@@ -181,18 +180,18 @@ export class GazeValidatorService {
               try {
                 const playTestResult = await this.testVideoPlayback(page);
                 if (playTestResult) {
-                  console.log(
+                  logger.log(
                     `[GazeValidator] Success: Video is confirmed playable`
                   );
                   resolveOnce(true);
                 } else {
-                  console.log(
+                  logger.log(
                     `[GazeValidator] Video has blob src but failed playback test`
                   );
                   resolveOnce(false);
                 }
               } catch (playTestError) {
-                console.log(
+                logger.log(
                   `[GazeValidator] Playback test failed: ${playTestError}`
                 );
                 resolveOnce(false);
@@ -208,14 +207,14 @@ export class GazeValidatorService {
               "Target page, context or browser has been closed"
             )
           ) {
-            console.log(
+            logger.log(
               "[GazeValidator] Page closed during validation, stopping"
             );
             resolveOnce(false);
             return;
           }
           // 其他错误继续轮询，但不打印过多日志
-          console.log(
+          logger.log(
             `[GazeValidator] Error during video check: ${errorMessage}`
           );
         }
@@ -230,7 +229,7 @@ export class GazeValidatorService {
     try {
       // 检查页面是否已关闭
       if (page.isClosed()) {
-        console.log("[GazeValidator] Page is closed, skipping playback test");
+        logger.log("[GazeValidator] Page is closed, skipping playback test");
         return false;
       }
 
@@ -292,7 +291,7 @@ export class GazeValidatorService {
     } catch (error) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      console.log(`[GazeValidator] Playback test error: ${errorMessage}`);
+      logger.log(`[GazeValidator] Playback test error: ${errorMessage}`);
       return false;
     }
   }

@@ -3,6 +3,7 @@ import stealth from "puppeteer-extra-plugin-stealth";
 import { Page } from "playwright";
 import path from "path";
 import fs from "fs";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -44,10 +45,10 @@ export class ImtlinkValidatorService {
       const fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
 
       // 调试断点：检查本地文件内容
-      console.log("[DEBUG] 本地 dplayer.html 文件路径:", fakeDetectorPath);
-      console.log("[DEBUG] 文件内容长度:", fakeDetectorScript.length);
-      console.log(
-        "[DEBUG] 文件内容预览:",
+      logger.debug("本地 dplayer.html 文件路径:", fakeDetectorPath);
+      logger.debug("文件内容长度:", fakeDetectorScript.length);
+      logger.debug(
+        "文件内容预览:",
         fakeDetectorScript.substring(0, 200) + "..."
       );
 
@@ -73,7 +74,7 @@ export class ImtlinkValidatorService {
       // 等待视频验证结果（10秒内）
       return await videoStatusPromise;
     } catch (error) {
-      console.error(
+      logger.error(
         `[ImtlinkValidator] Error validating ${playPageUrl}:`,
         error
       );
@@ -112,7 +113,7 @@ export class ImtlinkValidatorService {
 
       // 10秒超时
       const timeout = setTimeout(() => {
-        console.log(
+        logger.log(
           "[ImtlinkValidator] 10秒内未收到可播放的视频状态消息，验证失败"
         );
         resolveOnce(false);
@@ -124,7 +125,7 @@ export class ImtlinkValidatorService {
 
         // 监听视频可播放性的直接日志
         if (text.includes("[dplayer] 视频可播放性: true")) {
-          console.log("[ImtlinkValidator] 检测到视频可播放，验证成功");
+          logger.log("[ImtlinkValidator] 检测到视频可播放，验证成功");
           resolveOnce(true);
         }
 
@@ -135,7 +136,7 @@ export class ImtlinkValidatorService {
             if (messageMatch) {
               const messageData = JSON.parse(messageMatch[0]);
               if (messageData.isPlayable) {
-                console.log("[ImtlinkValidator] 从postMessage检测到视频可播放");
+                logger.log("[ImtlinkValidator] 从postMessage检测到视频可播放");
                 resolveOnce(true);
               }
             }
@@ -149,7 +150,7 @@ export class ImtlinkValidatorService {
           try {
             const data = JSON.parse(text.replace("VIDEO_STATUS_RESULT:", ""));
             if (data.isPlayable) {
-              console.log(
+              logger.log(
                 "[ImtlinkValidator] 从VIDEO_STATUS消息检测到视频可播放"
               );
               resolveOnce(true);
@@ -164,15 +165,15 @@ export class ImtlinkValidatorService {
 
       // 方法2：注入消息监听器到页面（作为备用）
       page.addInitScript(() => {
-        console.log("[ImtlinkValidator] 初始化消息监听器");
+        logger.log("[ImtlinkValidator] 初始化消息监听器");
 
         window.addEventListener("message", (event) => {
-          console.log("[ImtlinkValidator] 收到postMessage:", event.data);
+          logger.log("[ImtlinkValidator] 收到postMessage:", event.data);
 
           if (event.data && event.data.type === "VIDEO_STATUS") {
-            console.log("[ImtlinkValidator] 收到视频状态消息:", event.data);
+            logger.log("[ImtlinkValidator] 收到视频状态消息:", event.data);
             // 将消息发送到控制台，这样我们可以在Node.js端捕获
-            console.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
+            logger.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
           }
         });
 
@@ -182,7 +183,7 @@ export class ImtlinkValidatorService {
             "#playleft iframe"
           ) as HTMLIFrameElement;
           if (iframe && iframe.contentWindow) {
-            console.log("[ImtlinkValidator] 检测到iframe，尝试通信");
+            logger.log("[ImtlinkValidator] 检测到iframe，尝试通信");
           }
         }, 2000);
       });

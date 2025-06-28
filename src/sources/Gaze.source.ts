@@ -3,6 +3,7 @@ import stealth from "puppeteer-extra-plugin-stealth";
 import { Page } from "playwright";
 import { BaseSource } from "./BaseSource";
 import { SearchQuery, SearchResult } from "../types";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -41,7 +42,7 @@ export class GazeSource extends BaseSource {
       // 第一步: 调用 API 搜索电影
       const movies = await this.searchMovies(page, query.title);
       if (movies.length === 0) {
-        console.log(`[Gaze] No movies found for "${query.title}"`);
+        logger.log(`[Gaze] No movies found for "${query.title}"`);
         return [];
       }
 
@@ -53,7 +54,7 @@ export class GazeSource extends BaseSource {
         source: this.name,
       }));
     } catch (error) {
-      console.error("[Gaze] An error occurred:", error);
+      logger.error("[Gaze] An error occurred:", error);
       return [];
     } finally {
       await browser.close();

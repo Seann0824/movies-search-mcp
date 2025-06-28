@@ -1,6 +1,7 @@
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { Page } from "playwright";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -89,7 +90,7 @@ export abstract class BaseValidator {
       // 等待视频验证结果
       return await videoFoundPromise;
     } catch (error) {
-      console.error(
+      logger.error(
         `[${this.constructor.name}] Error validating ${playPageUrl}:`,
         error
       );
@@ -116,13 +117,11 @@ export abstract class BaseValidator {
    */
   protected setupPageErrorHandling(page: Page): void {
     page.on("pageerror", (error) => {
-      console.error(`[${this.constructor.name}] Page Error: ${error.message}`);
+      logger.error(`[${this.constructor.name}] Page Error: ${error.message}`);
     });
     page.on("console", async (msg) => {
       if (msg.type() === "error") {
-        console.error(
-          `[${this.constructor.name}] Console Error: ${msg.text()}`
-        );
+        logger.error(`[${this.constructor.name}] Console Error: ${msg.text()}`);
       }
     });
   }
@@ -136,12 +135,12 @@ export abstract class BaseValidator {
     try {
       const playButtonLocator = page.locator(this.config.playButtonSelector);
       await playButtonLocator.waitFor({ state: "visible", timeout: 10000 });
-      console.log(
+      logger.log(
         `[${this.constructor.name}] Play button is visible. Clicking to start playback.`
       );
       await playButtonLocator.click({ timeout: 3000 });
     } catch (error) {
-      console.warn(
+      logger.warn(
         `[${this.constructor.name}] Could not find or click the play button. The video might autoplay or be structured differently.`
       );
     }
@@ -168,7 +167,7 @@ export abstract class BaseValidator {
       };
 
       const timeout = setTimeout(() => {
-        console.log(
+        logger.log(
           `[${this.constructor.name}] Validation timed out after ${this.config.validationTimeout}ms. Video element not detected.`
         );
         resolveOnce(false);
@@ -177,7 +176,7 @@ export abstract class BaseValidator {
       // 每秒检查视频元素状态
       const checkInterval = setInterval(async () => {
         if (page.isClosed()) {
-          console.log(
+          logger.log(
             `[${this.constructor.name}] Page is closed, stopping validation`
           );
           resolveOnce(false);
@@ -190,7 +189,7 @@ export abstract class BaseValidator {
             resolveOnce(true);
           }
         } catch (error) {
-          console.error(
+          logger.error(
             `[${this.constructor.name}] Error checking video status:`,
             error
           );
@@ -252,7 +251,7 @@ export abstract class BaseValidator {
         })
         .catch((error) => {
           clearTimeout(timeout);
-          console.log(
+          logger.log(
             `[${this.constructor.name}] Playback test failed: ${error}`
           );
           resolve(false);

@@ -1,6 +1,7 @@
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { Page, FrameLocator } from "playwright";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -35,11 +36,11 @@ export class ShenQiZheValidatorService {
 
       // 捕获控制台错误
       page.on("pageerror", (error) => {
-        console.error(`[ShenQiZheValidator] Page Error: ${error.message}`);
+        logger.error(`[ShenQiZheValidator] Page Error: ${error.message}`);
       });
       page.on("console", async (msg) => {
         if (msg.type() === "error") {
-          console.error(`[ShenQiZheValidator] Console Error: ${msg.text()}`);
+          logger.error(`[ShenQiZheValidator] Console Error: ${msg.text()}`);
         }
       });
 
@@ -54,7 +55,7 @@ export class ShenQiZheValidatorService {
       // 等待视频验证结果
       return await videoFoundPromise;
     } catch (error) {
-      console.error(
+      logger.error(
         `[ShenQiZheValidator] Error validating ${playPageUrl}:`,
         error
       );
@@ -85,7 +86,7 @@ export class ShenQiZheValidatorService {
       };
 
       const timeout = setTimeout(() => {
-        console.log(
+        logger.log(
           "[ShenQiZheValidator] Validation timed out after 15 seconds. Video element not detected."
         );
         resolveOnce(false);
@@ -95,7 +96,7 @@ export class ShenQiZheValidatorService {
       const checkInterval = setInterval(async () => {
         // 检查页面是否已关闭
         if (page.isClosed()) {
-          console.log(
+          logger.log(
             "[ShenQiZheValidator] Page is closed, stopping validation"
           );
           resolveOnce(false);
@@ -105,7 +106,7 @@ export class ShenQiZheValidatorService {
         try {
           const videoStatus = await this.checkVideoStatus(page);
           if (videoStatus) {
-            console.log("[ShenQiZheValidator] Video validation successful");
+            logger.log("[ShenQiZheValidator] Video validation successful");
             resolveOnce(true);
           }
         } catch (error) {
@@ -116,14 +117,14 @@ export class ShenQiZheValidatorService {
               "Target page, context or browser has been closed"
             )
           ) {
-            console.log(
+            logger.log(
               "[ShenQiZheValidator] Page closed during validation, stopping"
             );
             resolveOnce(false);
             return;
           }
           // 其他错误继续轮询
-          console.log(
+          logger.log(
             `[ShenQiZheValidator] Error during video check: ${errorMessage}`
           );
         }
@@ -158,7 +159,7 @@ export class ShenQiZheValidatorService {
         return false;
       }
 
-      console.log(`[ShenQiZheValidator] Found iframe with src: ${iframeSrc}`);
+      logger.log(`[ShenQiZheValidator] Found iframe with src: ${iframeSrc}`);
 
       // 尝试访问iframe内容来验证视频
       try {
@@ -168,19 +169,17 @@ export class ShenQiZheValidatorService {
         // 在iframe内查找视频元素
         const videoElementExists = await this.checkVideoInFrame(frameLocator);
         if (videoElementExists) {
-          console.log("[ShenQiZheValidator] Video element found in iframe");
+          logger.log("[ShenQiZheValidator] Video element found in iframe");
           return true;
         }
       } catch (iframeError) {
-        console.log(
-          `[ShenQiZheValidator] Iframe access failed: ${iframeError}`
-        );
+        logger.log(`[ShenQiZheValidator] Iframe access failed: ${iframeError}`);
         // 如果无法访问iframe内容（可能是跨域），我们认为iframe存在且有src就是有效的
         if (
           iframeSrc.includes("/static/player/") ||
           iframeSrc.includes("player")
         ) {
-          console.log(
+          logger.log(
             "[ShenQiZheValidator] Iframe appears to be a valid player based on src"
           );
           return true;
@@ -190,7 +189,7 @@ export class ShenQiZheValidatorService {
       // 最后的备用检查：确认页面上有播放相关的元素
       return await this.checkPlayerIndicators(page);
     } catch (error) {
-      console.error("[ShenQiZheValidator] Error in checkVideoStatus:", error);
+      logger.error("[ShenQiZheValidator] Error in checkVideoStatus:", error);
       return false;
     }
   }
@@ -216,7 +215,7 @@ export class ShenQiZheValidatorService {
           const videoLocator = frameLocator.locator(selector).first();
           const videoExists = await videoLocator.isVisible({ timeout: 2000 });
           if (videoExists) {
-            console.log(
+            logger.log(
               `[ShenQiZheValidator] Found video element with selector: ${selector}`
             );
             return true;
@@ -229,7 +228,7 @@ export class ShenQiZheValidatorService {
 
       return false;
     } catch (error) {
-      console.log(
+      logger.log(
         `[ShenQiZheValidator] Error checking video in iframe: ${error}`
       );
       return false;
@@ -269,13 +268,13 @@ export class ShenQiZheValidatorService {
       });
 
       if (hasPlayerIndicators) {
-        console.log("[ShenQiZheValidator] Found player indicators on page");
+        logger.log("[ShenQiZheValidator] Found player indicators on page");
         return true;
       }
 
       return false;
     } catch (error) {
-      console.log(
+      logger.log(
         `[ShenQiZheValidator] Error checking player indicators: ${error}`
       );
       return false;

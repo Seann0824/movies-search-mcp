@@ -3,6 +3,7 @@ import stealth from "puppeteer-extra-plugin-stealth";
 import { Page } from "playwright";
 import { BaseSource } from "./BaseSource";
 import { SearchQuery, SearchResult } from "../types";
+import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -26,7 +27,7 @@ export class ImtlinkSource extends BaseSource {
       const searchResults = await this.searchMovies(page, query.title);
 
       if (searchResults.length === 0) {
-        console.log(`[Imtlink] No movies found for "${query.title}"`);
+        logger.log(`[Imtlink] No movies found for "${query.title}"`);
         return [];
       }
 
@@ -37,7 +38,7 @@ export class ImtlinkSource extends BaseSource {
         source: this.name,
       }));
     } catch (error) {
-      console.error("[Imtlink] An error occurred:", error);
+      logger.error("[Imtlink] An error occurred:", error);
       return [];
     } finally {
       await browser.close();
@@ -51,7 +52,7 @@ export class ImtlinkSource extends BaseSource {
     try {
       const searchUrl = `https://www.imtlink.com/vodsearch.html?wd=${encodeURIComponent(title)}`;
 
-      console.log(`[Imtlink] Searching: ${searchUrl}`);
+      logger.log(`[Imtlink] Searching: ${searchUrl}`);
 
       await page.goto(searchUrl, {
         waitUntil: "domcontentloaded",
@@ -64,7 +65,7 @@ export class ImtlinkSource extends BaseSource {
       // 提取第一页的搜索结果
       const firstPageResults = await this.extractSearchResults(page);
 
-      console.log(
+      logger.log(
         `[Imtlink] Found ${firstPageResults.length} results on first page`
       );
 
@@ -94,14 +95,14 @@ export class ImtlinkSource extends BaseSource {
           pageInfo.total > firstPageResults.length &&
           allResults.length < 20
         ) {
-          console.log(
+          logger.log(
             `[Imtlink] Found ${pageInfo.total} total results, fetching additional pages...`
           );
 
           for (let pageNum = 2; pageNum <= maxPages; pageNum++) {
             try {
               const pageUrl = `https://www.imtlink.com/vodsearch${encodeURIComponent(title)}/page/${pageNum}.html`;
-              console.log(`[Imtlink] Fetching page ${pageNum}: ${pageUrl}`);
+              logger.log(`[Imtlink] Fetching page ${pageNum}: ${pageUrl}`);
 
               await page.goto(pageUrl, {
                 waitUntil: "domcontentloaded",
@@ -111,7 +112,7 @@ export class ImtlinkSource extends BaseSource {
               await page.waitForTimeout(1500);
 
               const pageResults = await this.extractSearchResults(page);
-              console.log(
+              logger.log(
                 `[Imtlink] Found ${pageResults.length} results on page ${pageNum}`
               );
 
@@ -126,7 +127,7 @@ export class ImtlinkSource extends BaseSource {
                 break;
               }
             } catch (pageError) {
-              console.warn(
+              logger.warn(
                 `[Imtlink] Error fetching page ${pageNum}:`,
                 pageError
               );
@@ -135,16 +136,16 @@ export class ImtlinkSource extends BaseSource {
           }
         }
       } catch (paginationError) {
-        console.warn("[Imtlink] Error during pagination:", paginationError);
+        logger.warn("[Imtlink] Error during pagination:", paginationError);
       }
 
-      console.log(
+      logger.log(
         `[Imtlink] Total found ${allResults.length} results across all pages`
       );
 
       return allResults;
     } catch (error) {
-      console.error("[Imtlink] Error searching movies:", error);
+      logger.error("[Imtlink] Error searching movies:", error);
       return [];
     }
   }
@@ -158,7 +159,7 @@ export class ImtlinkSource extends BaseSource {
       });
 
       if (!hasResults) {
-        console.log(
+        logger.log(
           "[Imtlink] No .vod-list container found - no search results"
         );
         return [];
@@ -179,7 +180,7 @@ export class ImtlinkSource extends BaseSource {
         };
       });
 
-      console.log(
+      logger.log(
         `[Imtlink] Page info - Total: ${pageInfo.total}, Current page: ${pageInfo.currentPage}`
       );
 
@@ -219,11 +220,11 @@ export class ImtlinkSource extends BaseSource {
         return results;
       });
 
-      console.log(`[Imtlink] Extracted ${results.length} results from DOM`);
+      logger.log(`[Imtlink] Extracted ${results.length} results from DOM`);
 
       // 如果第一种方法没有结果，尝试备用方法
       if (results.length === 0) {
-        console.log("[Imtlink] Trying fallback extraction method");
+        logger.log("[Imtlink] Trying fallback extraction method");
 
         results = await page.evaluate(() => {
           const results: Array<{
@@ -273,7 +274,7 @@ export class ImtlinkSource extends BaseSource {
         source: this.name,
       }));
     } catch (error) {
-      console.error("[Imtlink] Error extracting search results:", error);
+      logger.error("[Imtlink] Error extracting search results:", error);
       return [];
     }
   }
@@ -290,7 +291,7 @@ export class ImtlinkSource extends BaseSource {
         const id = match[1];
         // 转换为播放页URL (默认第1季第1集)
         const playUrl = `https://www.imtlink.com/vodplay/${id}-1-1.html`;
-        console.log(`[Imtlink] Converted ${detailUrl} -> ${playUrl}`);
+        logger.log(`[Imtlink] Converted ${detailUrl} -> ${playUrl}`);
         return playUrl;
       }
 
@@ -300,10 +301,10 @@ export class ImtlinkSource extends BaseSource {
       }
 
       // 如果无法转换，返回原URL
-      console.warn(`[Imtlink] Could not convert URL: ${detailUrl}`);
+      logger.warn(`[Imtlink] Could not convert URL: ${detailUrl}`);
       return detailUrl;
     } catch (error) {
-      console.error(`[Imtlink] Error converting URL ${detailUrl}:`, error);
+      logger.error(`[Imtlink] Error converting URL ${detailUrl}:`, error);
       return detailUrl;
     }
   }

@@ -2,6 +2,7 @@ import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { BaseSource } from "./BaseSource";
 import { SearchQuery, SearchResult } from "../types";
+import { logger } from "../utils/logger";
 
 chromium.use(stealth());
 
@@ -71,7 +72,7 @@ export class ShenQiZheSource extends BaseSource {
           }) as SearchResult
       );
     } catch (error) {
-      console.error(`[${this.name}] An error occurred:`, error);
+      logger.error(`[${this.name}] An error occurred:`, error);
       return [];
     } finally {
       await browser.close();

@@ -72,7 +72,7 @@ const createMovieSearchServer = () => {
     },
     async ({ title, type, season, episode }) => {
       try {
-        console.error(`[MCP STDIO Server] 开始搜索: ${title} (${type})`);
+        // 在 STDIO 模式下不输出日志，避免干扰 MCP 协议通信
 
         const query: SearchQuery = {
           title,
@@ -110,8 +110,6 @@ const createMovieSearchServer = () => {
           };
         }
 
-        console.error(`[MCP STDIO Server] 找到 ${searchResults.length} 个资源`);
-
         // 返回结构化的搜索结果
         const structuredResults = {
           success: true,
@@ -143,7 +141,7 @@ const createMovieSearchServer = () => {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.error(`[MCP STDIO Server] 搜索错误:`, error);
+        // 错误不输出到 stderr，避免干扰 MCP 协议
 
         return {
           content: [
@@ -181,11 +179,10 @@ const createMovieSearchServer = () => {
     },
     async ({ url }) => {
       try {
-        console.error(`[MCP STDIO Server] 开始验证视频:`, url);
+        // 在 STDIO 模式下不输出日志，避免干扰 MCP 协议通信
 
         // 处理单个 URL 或 URL 数组
         const urls = Array.isArray(url) ? url : [url];
-        console.error(`[MCP STDIO Server] 共需验证 ${urls.length} 个链接`);
 
         // 并行验证所有 URL
         const validationPromises = urls.map(async (singleUrl, index) => {
@@ -200,9 +197,7 @@ const createMovieSearchServer = () => {
                   ? "Imtlink"
                   : "Default";
 
-            console.error(
-              `[MCP STDIO Server] 验证 [${index + 1}/${urls.length}] ${singleUrl} - 使用 ${validatorName} 验证器`
-            );
+            // 验证过程不输出日志
 
             const isValid = await validator.isValid(singleUrl);
 
@@ -221,10 +216,7 @@ const createMovieSearchServer = () => {
           } catch (error) {
             const errorMessage =
               error instanceof Error ? error.message : String(error);
-            console.error(
-              `[MCP STDIO Server] 验证 ${singleUrl} 时发生错误:`,
-              error
-            );
+            // 验证错误不输出日志
 
             return {
               url: singleUrl,
@@ -267,7 +259,7 @@ const createMovieSearchServer = () => {
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : String(error);
-        console.error(`[MCP STDIO Server] 验证错误:`, error);
+        // 验证错误不输出日志
 
         return {
           content: [
@@ -300,10 +292,10 @@ async function main() {
   const server = createMovieSearchServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("🎬 电影搜索工具 MCP Server (STDIO) 已启动");
+  // STDIO 模式下不输出启动日志，避免干扰 MCP 协议通信
 }
 
 main().catch((error) => {
-  console.error("服务器启动失败:", error);
+  // 启动失败也不输出到 stderr，静默退出
   process.exit(1);
 });

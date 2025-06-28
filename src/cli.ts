@@ -18,9 +18,10 @@ const targetPath = path.join(__dirname, targetFile);
 // 过滤掉模式参数，传递其他参数
 const filteredArgs = args.filter((arg) => arg !== "--sse" && arg !== "-s");
 
-console.error(
-  `🎬 启动电影搜索工具 MCP Server (${isSSEMode ? "SSE" : "STDIO"} 模式)`
-);
+// 只在 SSE 模式下输出启动信息，STDIO 模式需要保持静默
+if (isSSEMode) {
+  console.error(`🎬 启动电影搜索工具 MCP Server (SSE 模式)`);
+}
 
 // 启动对应的服务器
 const child = spawn("node", [targetPath, ...filteredArgs], {
@@ -42,6 +43,9 @@ child.on("exit", (code) => {
 });
 
 child.on("error", (error) => {
-  console.error("启动服务器失败:", error);
+  // 只在 SSE 模式下输出错误信息
+  if (isSSEMode) {
+    console.error("启动服务器失败:", error);
+  }
   process.exit(1);
 });

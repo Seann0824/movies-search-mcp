@@ -6,6 +6,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
+import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
 import { GazeValidatorService } from "./core/gaze.validator";
 import { SearchQuery } from "./types/index";
 
@@ -33,6 +34,7 @@ const createMovieSearchServer = () => {
 
   // 初始化服务
   const gazeSource = new GazeSource();
+  const shenQiZheSource = new ShenQiZheSource();
   const gazeValidator = new GazeValidatorService();
 
   // 注册电影搜索工具
@@ -67,8 +69,13 @@ const createMovieSearchServer = () => {
           ...(episode && { episode }),
         };
 
-        // 搜索所有潜在的播放页面（不进行验证）
-        const searchResults = await gazeSource.find(query);
+        // 并行搜索所有源
+        const sources = [gazeSource, shenQiZheSource];
+        const searchPromises = sources.map((source) => source.find(query));
+        const resultsFromAllSources = await Promise.all(searchPromises);
+
+        // 合并并展平结果
+        const searchResults = resultsFromAllSources.flat();
 
         if (searchResults.length === 0) {
           await sendNotification({

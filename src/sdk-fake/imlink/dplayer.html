@@ -1,0 +1,194 @@
+<!doctype html>
+<html>
+  <head>
+    <title>dplayer播放器</title>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=11" />
+    <meta
+      content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"
+      id="viewport"
+      name="viewport"
+    />
+    <style type="text/css">
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
+      #playerCnt {
+        width: 100%;
+        height: 100%;
+      }
+      #stats {
+        position: fixed;
+        top: 5px;
+        left: 10px;
+        font-size: 12px;
+        color: #fdfdfd;
+        z-index: 1054752222;
+        text-shadow:
+          1px 1px 1px #000,
+          1px 1px 1px #000;
+      }
+      .dplayer-menu {
+        display: none !important;
+      }
+    </style>
+    <link rel="stylesheet" href="./dplayer/DPlayer.min.css" />
+    <script type="text/javascript" src="./dplayer/flv.min.js"></script>
+    <script type="text/javascript" src="./dplayer/hls.min.js"></script>
+    <script type="text/javascript" src="./dplayer/dash.all.min.js"></script>
+    <script type="text/javascript" src="./dplayer/webtorrent.min.js"></script>
+    <script type="text/javascript" src="./dplayer/DPlayer.min.js"></script>
+    <script type="text/javascript" src="/static/js/jquery.js"></script>
+  </head>
+  <body marginwidth="0" marginheight="0">
+    <div id="playerCnt" ondblclick="click2()"></div>
+    <div id="stats">警告：请不要相信视频中任何广告与字幕！</div>
+    <script type="text/javascript" src="./dplayer/setting.js"></script>
+    <script type="text/javascript">
+      console.log("dplayer.html loaded");
+
+      // 视频检测脚本
+      function checkVideoPlayability() {
+        console.log("[dplayer] 开始检测视频元素...");
+
+        // 查找video元素
+        const videoSelectors = [
+          "#playerCnt > div.dplayer-video-wrap > video", // 用户提供的精确选择器
+        ];
+
+        const video = document.querySelector(videoSelectors[0]);
+
+        if (!video) {
+          console.log("[dplayer] 未找到视频元素");
+          return false;
+        }
+
+        // 检查视频状态
+        const videoInfo = {
+          src: video.src,
+          currentSrc: video.currentSrc,
+          readyState: video.readyState,
+          networkState: video.networkState,
+          duration: video.duration,
+          paused: video.paused,
+          ended: video.ended,
+          error: video.error,
+        };
+
+        console.log("[dplayer] 视频信息:", videoInfo);
+
+        // 判断视频是否可播放
+        const isPlayable =
+          ((video.src || video.currentSrc) && // 有视频源
+            video.readyState >= 1 && // HAVE_METADATA 或更高
+            !video.error && // 没有错误
+            video.duration > 0) || // 有有效时长
+          // 或者至少有blob源（即使readyState还没准备好）
+          (video.src && video.src.startsWith("blob:")) ||
+          (video.currentSrc && video.currentSrc.startsWith("blob:"));
+
+        console.log(`[dplayer] 视频可播放性: ${isPlayable}`);
+
+        // 发送消息给父页面
+        const message = {
+          type: "VIDEO_STATUS",
+          isPlayable: isPlayable,
+          videoInfo: videoInfo,
+          timestamp: Date.now(),
+        };
+
+        try {
+          window.parent.postMessage(message, "*");
+          console.log("[dplayer] 已发送消息给父页面:", message);
+        } catch (error) {
+          console.error("[dplayer] 发送消息失败:", error);
+        }
+
+        return isPlayable;
+      }
+
+      // 监听video元素的各种事件
+      function setupVideoListeners(video) {
+        const events = [
+          "loadstart",
+          "loadedmetadata",
+          "loadeddata",
+          "canplay",
+          "canplaythrough",
+          "error",
+        ];
+
+        events.forEach((eventName) => {
+          video.addEventListener(eventName, () => {
+            console.log(`[dplayer] 视频事件: ${eventName}`);
+            checkVideoPlayability();
+          });
+        });
+      }
+
+      // 使用 MutationObserver 监听DOM变化，检测动态创建的video元素
+      const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+          mutation.addedNodes.forEach((node) => {
+            if (node.nodeType === 1) {
+              // Element node
+              // 检查是否是video元素
+              if (node.tagName === "VIDEO") {
+                console.log("[dplayer] 检测到新的video元素");
+                setupVideoListeners(node);
+                // 延迟检查，给视频时间加载
+                setTimeout(() => checkVideoPlayability(), 1000);
+              }
+
+              // 检查子元素中是否有video
+              const videos = node.querySelectorAll
+                ? node.querySelectorAll("video")
+                : [];
+              videos.forEach((video) => {
+                console.log("[dplayer] 检测到子video元素");
+                setupVideoListeners(video);
+                setTimeout(() => checkVideoPlayability(), 1000);
+              });
+            }
+          });
+        });
+      });
+
+      // 开始观察DOM变化
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+      });
+
+      // 页面加载完成后也检查一次
+      document.addEventListener("DOMContentLoaded", () => {
+        console.log("[dplayer] DOM加载完成，检查现有video元素");
+        setTimeout(() => checkVideoPlayability(), 2000);
+      });
+
+      // 如果DOM已经加载完成
+      if (document.readyState === "loading") {
+        document.addEventListener("DOMContentLoaded", () => {
+          setTimeout(() => checkVideoPlayability(), 2000);
+        });
+      } else {
+        setTimeout(() => checkVideoPlayability(), 2000);
+      }
+
+      // 定期检查（作为备用）
+      setInterval(() => {
+        const video = document.querySelector("video");
+        if (video && !video._listenerSetup) {
+          console.log("[dplayer] 定期检查发现新video元素");
+          setupVideoListeners(video);
+          video._listenerSetup = true;
+          checkVideoPlayability();
+        }
+      }, 3000);
+    </script>
+  </body>
+</html>

@@ -7,8 +7,10 @@ import { z } from "zod";
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
 import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
+import { ImtlinkSource } from "./sources/Imtlink.source";
 import { GazeValidatorService } from "./core/gaze.validator";
 import { ShenQiZheValidatorService } from "./core/shenqizhe.validator";
+import { ImtlinkValidatorService } from "./core/imtlink.validator";
 import { SearchQuery } from "./types/index";
 
 dotenv.config();
@@ -36,8 +38,10 @@ const createMovieSearchServer = () => {
   // 初始化服务
   const gazeSource = new GazeSource();
   const shenQiZheSource = new ShenQiZheSource();
+  const imtlinkSource = new ImtlinkSource();
   const gazeValidator = new GazeValidatorService();
   const shenQiZheValidator = new ShenQiZheValidatorService();
+  const imtlinkValidator = new ImtlinkValidatorService();
 
   /**
    * 根据URL选择合适的验证器
@@ -47,6 +51,8 @@ const createMovieSearchServer = () => {
       return gazeValidator;
     } else if (url.includes("shenqizhe.com")) {
       return shenQiZheValidator;
+    } else if (url.includes("imtlink.com")) {
+      return imtlinkValidator;
     } else {
       // 默认使用 gaze 验证器
       return gazeValidator;
@@ -86,7 +92,7 @@ const createMovieSearchServer = () => {
         };
 
         // 并行搜索所有源
-        const sources = [gazeSource, shenQiZheSource];
+        const sources = [gazeSource, shenQiZheSource, imtlinkSource];
         const searchPromises = sources.map((source) => source.find(query));
         const resultsFromAllSources = await Promise.all(searchPromises);
 
@@ -233,7 +239,9 @@ const createMovieSearchServer = () => {
               ? "Gaze"
               : singleUrl.includes("shenqizhe.com")
                 ? "ShenQiZhe"
-                : "Default";
+                : singleUrl.includes("imtlink.com")
+                  ? "Imtlink"
+                  : "Default";
 
             console.error(
               `[MCP SSE Server] 验证 [${index + 1}/${urls.length}] ${singleUrl} - 使用 ${validatorName} 验证器`

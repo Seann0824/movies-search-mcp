@@ -9,8 +9,10 @@ import {
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
 import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
+import { ImtlinkSource } from "./sources/Imtlink.source";
 import { GazeValidatorService } from "./core/gaze.validator";
 import { ShenQiZheValidatorService } from "./core/shenqizhe.validator";
+import { ImtlinkValidatorService } from "./core/imtlink.validator";
 import { SearchQuery, SearchResult } from "./types/index";
 
 dotenv.config();
@@ -23,8 +25,10 @@ class MovieSearchMCPServer {
   private server: Server;
   private gazeSource: GazeSource;
   private shenQiZheSource: ShenQiZheSource;
+  private imtlinkSource: ImtlinkSource;
   private gazeValidator: GazeValidatorService;
   private shenQiZheValidator: ShenQiZheValidatorService;
+  private imtlinkValidator: ImtlinkValidatorService;
 
   constructor() {
     this.server = new Server(
@@ -41,8 +45,10 @@ class MovieSearchMCPServer {
 
     this.gazeSource = new GazeSource();
     this.shenQiZheSource = new ShenQiZheSource();
+    this.imtlinkSource = new ImtlinkSource();
     this.gazeValidator = new GazeValidatorService();
     this.shenQiZheValidator = new ShenQiZheValidatorService();
+    this.imtlinkValidator = new ImtlinkValidatorService();
 
     this.setupToolHandlers();
   }
@@ -55,6 +61,8 @@ class MovieSearchMCPServer {
       return this.gazeValidator;
     } else if (url.includes("shenqizhe.com")) {
       return this.shenQiZheValidator;
+    } else if (url.includes("imtlink.com")) {
+      return this.imtlinkValidator;
     } else {
       // 默认使用 gaze 验证器
       return this.gazeValidator;
@@ -151,7 +159,11 @@ class MovieSearchMCPServer {
             };
 
             // 并行搜索所有源
-            const sources = [this.gazeSource, this.shenQiZheSource];
+            const sources = [
+              this.gazeSource,
+              this.shenQiZheSource,
+              this.imtlinkSource,
+            ];
             const searchPromises = sources.map((source) => source.find(query));
             const resultsFromAllSources = await Promise.all(searchPromises);
 
@@ -228,7 +240,9 @@ class MovieSearchMCPServer {
                   ? "Gaze"
                   : singleUrl.includes("shenqizhe.com")
                     ? "ShenQiZhe"
-                    : "Default";
+                    : singleUrl.includes("imtlink.com")
+                      ? "Imtlink"
+                      : "Default";
 
                 console.error(
                   `[MCP Server] 验证 ${singleUrl} - 使用 ${validatorName} 验证器`

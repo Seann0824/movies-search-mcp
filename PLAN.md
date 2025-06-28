@@ -32,7 +32,7 @@ npm run test:mcp:sse
     "movie-search-tool-sse": {
       "command": "node",
       "args": [
-        "/path/to/your/project/movies-search-tool/dist/mcp-server-sse.js"
+        "/path/to/your/project/movies-search-mcp/dist/mcp-server-sse.js"
       ],
       "env": {}
     }
@@ -212,7 +212,7 @@ const getValidatorForUrl = (url: string) => {
 ### 项目目录结构
 
 ```
-movies-search-tool/
+movies-search-mcp/
 ├── src/
 │   ├── api/             # API 层 (Express.js) - 待实现
 │   │   ├── controllers/ # 请求处理器

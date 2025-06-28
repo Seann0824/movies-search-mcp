@@ -97,8 +97,8 @@ setTimeout(() => {
         console.log("1. npm login");
         console.log("2. npm publish --access public");
         console.log("\n📋 使用方法:");
-        console.log("npx @sean/movies-search-tool          # STDIO 模式");
-        console.log("npx @sean/movies-search-tool --sse    # SSE 模式");
+        console.log("npx @sean/movies-search-mcp          # STDIO 模式");
+        console.log("npx @sean/movies-search-mcp --sse    # SSE 模式");
       });
     });
 

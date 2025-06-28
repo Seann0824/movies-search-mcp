@@ -15,17 +15,17 @@
 ### 全局安装
 
 ```bash
-npm install -g @sean/movies-search-tool
+npm install -g @sean/movies-search-mcp
 ```
 
 ### 使用 npx (推荐)
 
 ```bash
 # 默认 STDIO 模式
-npx @sean/movies-search-tool
+npx @sean/movies-search-mcp
 
 # SSE 模式
-npx @sean/movies-search-tool --sse
+npx @sean/movies-search-mcp --sse
 ```
 
 ## 🚀 使用方法
@@ -34,17 +34,17 @@ npx @sean/movies-search-tool --sse
 
 ```bash
 # 默认 STDIO 模式 (适合 MCP 客户端)
-movies-search-tool
+movies-search-mcp
 
 # 或使用短命令
 mst
 
 # SSE 模式 (适合 Web 应用)
-movies-search-tool --sse
+movies-search-mcp --sse
 mst --sse
 
 # 指定端口 (仅 SSE 模式)
-PORT=3001 movies-search-tool --sse
+PORT=3001 movies-search-mcp --sse
 ```
 
 ### MCP 客户端集成
@@ -54,9 +54,9 @@ PORT=3001 movies-search-tool --sse
 ```json
 {
   "mcpServers": {
-    "movies-search-tool": {
+    "movies-search-mcp": {
       "command": "npx",
-      "args": ["@sean/movies-search-tool"]
+      "args": ["@sean/movies-search-mcp"]
     }
   }
 }
@@ -109,8 +109,8 @@ PORT=3001 movies-search-tool --sse
 
 ```bash
 # 克隆项目
-git clone https://github.com/seanwangjs/movies-search-tool.git
-cd movies-search-tool
+git clone https://github.com/seanwangjs/movies-search-mcp.git
+cd movies-search-mcp
 
 # 安装依赖
 npm install
@@ -159,7 +159,7 @@ MIT License
 
 如果你遇到任何问题，请：
 
-1. 查看 [Issues](https://github.com/seanwangjs/movies-search-tool/issues)
+1. 查看 [Issues](https://github.com/seanwangjs/movies-search-mcp/issues)
 2. 创建新的 Issue
 3. 联系作者: seanwangjs@example.com
 

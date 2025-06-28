@@ -10,6 +10,7 @@ import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
 import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
 import { GazeValidatorService } from "./core/gaze.validator";
+import { ShenQiZheValidatorService } from "./core/shenqizhe.validator";
 import { SearchQuery, SearchResult } from "./types/index";
 
 dotenv.config();
@@ -23,6 +24,7 @@ class MovieSearchMCPServer {
   private gazeSource: GazeSource;
   private shenQiZheSource: ShenQiZheSource;
   private gazeValidator: GazeValidatorService;
+  private shenQiZheValidator: ShenQiZheValidatorService;
 
   constructor() {
     this.server = new Server(
@@ -40,8 +42,23 @@ class MovieSearchMCPServer {
     this.gazeSource = new GazeSource();
     this.shenQiZheSource = new ShenQiZheSource();
     this.gazeValidator = new GazeValidatorService();
+    this.shenQiZheValidator = new ShenQiZheValidatorService();
 
     this.setupToolHandlers();
+  }
+
+  /**
+   * 根据URL选择合适的验证器
+   */
+  private getValidatorForUrl(url: string) {
+    if (url.includes("gaze.run")) {
+      return this.gazeValidator;
+    } else if (url.includes("shenqizhe.com")) {
+      return this.shenQiZheValidator;
+    } else {
+      // 默认使用 gaze 验证器
+      return this.gazeValidator;
+    }
   }
 
   private setupToolHandlers() {
@@ -186,12 +203,23 @@ class MovieSearchMCPServer {
 
             console.error(`[MCP Server] 开始验证视频: ${url}`);
 
-            const isValid = await this.gazeValidator.isValid(url);
+            // 根据URL选择合适的验证器
+            const validator = this.getValidatorForUrl(url);
+            const validatorName = url.includes("gaze.run")
+              ? "Gaze"
+              : url.includes("shenqizhe.com")
+                ? "ShenQiZhe"
+                : "Default";
+
+            console.error(`[MCP Server] 使用 ${validatorName} 验证器`);
+
+            const isValid = await validator.isValid(url);
 
             const result = {
               success: true,
               url: url,
               valid: isValid,
+              validator: validatorName,
               status: isValid ? "可播放" : "无法播放",
               message: isValid
                 ? "视频链接验证成功，可以正常播放"

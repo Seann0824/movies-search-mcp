@@ -8,6 +8,7 @@ import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
 import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
 import { GazeValidatorService } from "./core/gaze.validator";
+import { ShenQiZheValidatorService } from "./core/shenqizhe.validator";
 import { SearchQuery } from "./types/index";
 
 dotenv.config();
@@ -36,6 +37,21 @@ const createMovieSearchServer = () => {
   const gazeSource = new GazeSource();
   const shenQiZheSource = new ShenQiZheSource();
   const gazeValidator = new GazeValidatorService();
+  const shenQiZheValidator = new ShenQiZheValidatorService();
+
+  /**
+   * 根据URL选择合适的验证器
+   */
+  const getValidatorForUrl = (url: string) => {
+    if (url.includes("gaze.run")) {
+      return gazeValidator;
+    } else if (url.includes("shenqizhe.com")) {
+      return shenQiZheValidator;
+    } else {
+      // 默认使用 gaze 验证器
+      return gazeValidator;
+    }
+  };
 
   // 注册电影搜索工具
   server.tool(
@@ -191,20 +207,31 @@ const createMovieSearchServer = () => {
       try {
         console.error(`[MCP SSE Server] 开始验证视频: ${url}`);
 
+        // 根据URL选择合适的验证器
+        const validator = getValidatorForUrl(url);
+        const validatorName = url.includes("gaze.run")
+          ? "Gaze"
+          : url.includes("shenqizhe.com")
+            ? "ShenQiZhe"
+            : "Default";
+
+        console.error(`[MCP SSE Server] 使用 ${validatorName} 验证器`);
+
         await sendNotification({
           method: "notifications/message",
           params: {
             level: "info",
-            data: `🔍 开始验证视频链接...`,
+            data: `🔍 开始使用 ${validatorName} 验证器验证视频链接...`,
           },
         });
 
-        const isValid = await gazeValidator.isValid(url);
+        const isValid = await validator.isValid(url);
 
         const result = {
           success: true,
           url: url,
           valid: isValid,
+          validator: validatorName,
           status: isValid ? "可播放" : "无法播放",
           message: isValid
             ? "视频链接验证成功，可以正常播放"
@@ -217,8 +244,8 @@ const createMovieSearchServer = () => {
           params: {
             level: isValid ? "info" : "warning",
             data: isValid
-              ? "✅ 验证成功，视频可播放"
-              : "❌ 验证失败，视频无法播放",
+              ? `✅ 验证成功，视频可播放 (${validatorName})`
+              : `❌ 验证失败，视频无法播放 (${validatorName})`,
           },
         });
 

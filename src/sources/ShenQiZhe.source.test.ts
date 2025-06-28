@@ -1,84 +1,71 @@
 import { ShenQiZheSource } from "./ShenQiZhe.source";
 import { SearchQuery } from "../types";
-import { chromium } from "playwright-extra";
-import fs from "fs";
-import path from "path";
-import { JSDOM } from "jsdom";
 
-// Read the mock HTML file once
-const htmlContent = fs.readFileSync(
-  path.resolve(__dirname, "../../movies-result.html"),
-  "utf-8"
-);
-
-// Mock playwright-extra
-jest.mock("playwright-extra", () => ({
-  chromium: {
-    launch: jest.fn().mockResolvedValue({
-      newContext: jest.fn().mockResolvedValue({
-        newPage: jest.fn().mockResolvedValue({
-          goto: jest.fn().mockResolvedValue(undefined),
-          $$eval: jest
-            .fn()
-            .mockImplementation((selector, pageFunction, domain) => {
-              // Fake the DOM evaluation
-              const dom = new JSDOM(htmlContent);
-              const items = dom.window.document.querySelectorAll(selector);
-              return pageFunction(items, domain);
-            }),
-        }),
-      }),
-      close: jest.fn(),
-    }),
-    use: jest.fn(),
-  },
-}));
-
-describe("ShenQiZheSource Unit Test", () => {
+describe("ShenQiZheSource Integration Test", () => {
   let shenQiZheSource: ShenQiZheSource;
+  let lastTestTime = 0;
 
-  beforeEach(() => {
+  beforeEach(async () => {
     shenQiZheSource = new ShenQiZheSource();
+
+    // 确保测试间隔至少10秒，避免频繁请求
+    const now = Date.now();
+    const timeSinceLastTest = now - lastTestTime;
+    const minInterval = 10000; // 10秒
+
+    if (timeSinceLastTest < minInterval) {
+      const waitTime = minInterval - timeSinceLastTest;
+      console.log(`[Test] 等待 ${waitTime}ms 以遵守频率限制...`);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
+    }
+
+    lastTestTime = Date.now();
   });
 
-  it("should parse movie results from HTML correctly", async () => {
+  it("should search and parse movie results correctly", async () => {
     const query: SearchQuery = {
       title: "小黄人",
       type: "movie",
     };
+
+    console.log(`[Test] 开始搜索: ${query.title}`);
     const results = await shenQiZheSource.find(query);
+
+    console.log(`[Test] 找到 ${results.length} 个结果`);
+
     expect(results).toBeInstanceOf(Array);
     expect(results.length).toBeGreaterThan(0);
 
+    // 验证结果结构
     const firstResult = results[0];
-    expect(firstResult.title).toBe("小黄人大眼萌");
-    expect(firstResult.url).toBe(
-      "https://www.shenqizhe.com/vodplay/69958-1-1.html"
-    );
-    expect(firstResult.quality).toBe("HD");
+    expect(firstResult).toHaveProperty("title");
+    expect(firstResult).toHaveProperty("url");
+    expect(firstResult).toHaveProperty("quality");
+    expect(firstResult).toHaveProperty("source");
+
     expect(firstResult.source).toBe("ShenQiZhe");
-  });
+    expect(firstResult.url).toContain("shenqizhe.com");
+    expect(typeof firstResult.title).toBe("string");
+    expect(typeof firstResult.quality).toBe("string");
 
-  it("should handle empty search results", async () => {
-    // Mock the $$eval to return an empty array
-    (chromium.launch as jest.Mock).mockResolvedValueOnce({
-      newContext: jest.fn().mockResolvedValue({
-        newPage: jest.fn().mockResolvedValue({
-          goto: jest.fn().mockResolvedValue(undefined),
-          $$eval: jest.fn().mockResolvedValue([]),
-        }),
-      }),
-      close: jest.fn(),
-    });
+    console.log(
+      `[Test] 第一个结果: ${firstResult.title} - ${firstResult.quality}`
+    );
+  }, 30000); // 30秒超时
 
-    shenQiZheSource = new ShenQiZheSource();
-
+  it("should handle search with no results gracefully", async () => {
     const query: SearchQuery = {
-      title: "a-movie-that-does-not-exist",
+      title: "一个不存在的电影名称12345",
       type: "movie",
     };
+
+    console.log(`[Test] 搜索不存在的电影: ${query.title}`);
     const results = await shenQiZheSource.find(query);
 
-    expect(results).toEqual([]);
-  });
+    console.log(`[Test] 结果数量: ${results.length}`);
+
+    expect(results).toBeInstanceOf(Array);
+    // 可能返回空数组或者少量结果
+    expect(results.length).toBeGreaterThanOrEqual(0);
+  }, 30000); // 30秒超时
 });

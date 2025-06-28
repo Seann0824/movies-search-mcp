@@ -70,20 +70,32 @@ npm run test:mcp:sse
 
 **当前已实现功能：**
 
+- ✅ **多源并行搜索** - 同时从 Gaze.run 和 ShenQiZhe.com 搜索资源
+- ✅ **智能验证系统** - 根据 URL 自动选择合适的验证器
 - ✅ **Gaze.run 资源搜索** - 完整实现并通过测试
+- ✅ **ShenQiZhe.com 资源搜索** - 新增支持，基于 HTML 解析
 - ✅ **多层视频验证系统** - 基于浏览器自动化的高精度验证
 - ✅ **反检测机制** - 使用 Playwright + Stealth 插件绕过网站检测
 - ✅ **并发验证** - 支持多个视频链接同时验证
 - ✅ **端到端测试** - 完整的搜索→验证→结果流程
 
+**支持的视频网站：**
+
+| 网站              | 状态      | 搜索方式 | 验证器             | 特色功能             |
+| ----------------- | --------- | -------- | ------------------ | -------------------- |
+| **Gaze.run**      | ✅ 已实现 | API调用  | GazeValidator      | 五层验证策略，反检测 |
+| **ShenQiZhe.com** | ✅ 已实现 | HTML解析 | ShenQiZheValidator | iframe播放器验证     |
+
 **测试验证结果：**
 
 ```
-✅ 搜索测试: 找到2个潜在结果
-✅ 验证测试: 2个结果都通过严格验证
-✅ 最终结果:
-  [1] https://gaze.run/play/xxx (720P)
-  [2] https://gaze.run/play/xxx (1080P)
+✅ Gaze.run 搜索测试: 找到2个潜在结果，2个通过验证
+✅ ShenQiZhe.com 搜索测试: 找到8个潜在结果
+✅ 智能验证器选择: 根据URL自动选择对应验证器
+✅ 最终合并结果:
+  [1] https://gaze.run/play/xxx (720P) - Gaze验证器
+  [2] https://gaze.run/play/xxx (1080P) - Gaze验证器
+  [3] https://www.shenqizhe.com/vodplay/xxx (HD) - ShenQiZhe验证器
 ```
 
 ## 架构规划
@@ -112,7 +124,7 @@ npm run test:mcp:sse
 
 ### 核心模块详解
 
-#### 🔍 已实现：Gaze.run 搜索引擎
+#### 🔍 已实现：多源搜索引擎
 
 **GazeSource** (`src/sources/Gaze.source.ts`)：
 
@@ -121,7 +133,14 @@ npm run test:mcp:sse
 - 返回格式化的播放页面 URL 列表
 - 支持不同画质的视频资源发现
 
-#### 🛡️ 已实现：高级视频验证系统
+**ShenQiZheSource** (`src/sources/ShenQiZhe.source.ts`)：
+
+- 使用关键词搜索 ShenQiZhe.com 网站
+- 基于 HTML 解析 `.module-search-item` 元素
+- 提取电影标题、播放链接和清晰度信息
+- 支持电影和电视剧资源搜索
+
+#### 🛡️ 已实现：智能验证系统
 
 **GazeValidatorService** (`src/core/gaze.validator.ts`)：
 
@@ -133,6 +152,15 @@ npm run test:mcp:sse
 4. **L4 - 视频状态验证**: 检查 `readyState ≥ 2` 和 `duration > 0`
 5. **L5 - 实际播放测试**: 尝试播放并监听 `timeupdate` 事件确认视频真正可播放
 
+**ShenQiZheValidatorService** (`src/core/shenqizhe.validator.ts`)：
+
+基于通用验证器架构 (`BaseValidator`)，专门处理 ShenQiZhe.com 的验证需求：
+
+1. **iframe 播放器检测**: 定位 `#playleft iframe` 播放器容器
+2. **视频元素验证**: 在 iframe 内查找 `<video>` 元素
+3. **播放器指示器**: 检查 `.dplayer-controller` 等播放器组件
+4. **跨域处理**: 支持跨域 iframe 的降级验证策略
+
 **反检测机制：**
 
 - 使用真实 Chrome 浏览器 (`channel: 'chrome'`)
@@ -140,14 +168,30 @@ npm run test:mcp:sse
 - 拦截并替换 `devtools-detector.min.js` 脚本
 - 禁用 `console.clear()` 保留调试信息
 
+**智能验证器选择：**
+
+```typescript
+const getValidatorForUrl = (url: string) => {
+  if (url.includes("gaze.run")) {
+    return gazeValidator;
+  } else if (url.includes("shenqizhe.com")) {
+    return shenQiZheValidator;
+  } else {
+    return gazeValidator; // 默认验证器
+  }
+};
+```
+
 #### 🎯 验证精度
 
 经过实际测试验证，系统能够：
 
+- **智能路由**：根据URL域名自动选择合适的验证器
 - **准确识别**可播放视频（readyState: 4, 有效时长）
 - **自动过滤**加载失败或无法播放的资源
-- **支持多种画质**（720P, 1080P）
+- **支持多种画质**（720P, 1080P, HD）
 - **并发处理**多个验证任务
+- **跨网站支持**：统一的验证接口，支持不同网站的播放器结构
 
 ### 项目目录结构
 
@@ -160,19 +204,25 @@ movies-search-tool/
 │   │   └── routes/      # API 路由定义
 │   ├── config/          # 配置管理
 │   │   └── index.ts
-│   ├── core/            # 核心业务逻辑
-│   │   └── gaze.validator.ts # ✅ Gaze专用验证器 (已实现)
+│   ├── core/            # ✅ 验证器系统 (已实现)
+│   │   ├── base.validator.ts      # ✅ 通用验证器基类
+│   │   ├── gaze.validator.ts      # ✅ Gaze专用验证器
+│   │   └── shenqizhe.validator.ts # ✅ ShenQiZhe专用验证器
 │   ├── jobs/            # 后台任务处理 - 待实现
 │   ├── services/        # 应用服务层 - 待实现
 │   ├── sources/         # ✅ 资源网站爬虫实现
-│   │   ├── BaseSource.ts     # ✅ 抽象基类 (已实现)
-│   │   ├── Gaze.source.ts    # ✅ Gaze.run 搜索 (已实现)
-│   │   └── Gaze.source.test.ts # ✅ 端到端测试 (已实现)
+│   │   ├── BaseSource.ts         # ✅ 抽象基类 (已实现)
+│   │   ├── Gaze.source.ts        # ✅ Gaze.run 搜索 (已实现)
+│   │   ├── ShenQiZhe.source.ts   # ✅ ShenQiZhe.com 搜索 (已实现)
+│   │   ├── Gaze.source.test.ts   # ✅ Gaze端到端测试 (已实现)
+│   │   └── ShenQiZhe.source.test.ts # ✅ ShenQiZhe集成测试 (已实现)
 │   ├── sdk-fake/        # ✅ 反检测资源
 │   │   └── gaze/devtools-detector.min.js # 伪造脚本
 │   ├── types/           # ✅ TypeScript 类型定义 (已实现)
 │   │   └── index.ts
 │   ├── utils/           # 工具函数 - 待实现
+│   ├── mcp-server.ts    # ✅ MCP Server (已实现)
+│   ├── mcp-server-sse.ts # ✅ MCP Server SSE版本 (已实现)
 │   └── server.ts        # Express 服务器 - 待实现
 ├── package.json         # ✅ 依赖配置完成
 ├── tsconfig.json        # ✅ TypeScript 配置
@@ -193,16 +243,40 @@ npm install
 # 运行 Gaze.run 端到端测试
 npm test src/sources/Gaze.source.test.ts
 
+# 运行 ShenQiZhe.com 集成测试
+npm test src/sources/ShenQiZhe.source.test.ts
+
+# 运行验证器测试
+npm test src/core/shenqizhe.validator.test.ts
+
 # 运行所有测试
 npm test
 ```
 
 ### 测试输出示例
 
+**Gaze.run 测试结果：**
+
 ```
 ✅ All validated results:
   [1] https://gaze.run/play/3707985a810eb936d216b2f.. (720P)
   [2] https://gaze.run/play/57fac3ff0917fa8ad2088a.. (1080P)
+```
+
+**ShenQiZhe.com 测试结果：**
+
+```
+✅ ShenQiZhe 搜索测试: 找到8个结果
+✅ 第一个结果: 小黄人大眼萌 - HD
+✅ 结构验证: 所有字段完整
+```
+
+**验证器测试结果：**
+
+```
+✅ ShenQiZhe 验证器配置正确
+✅ URL 验证逻辑正常
+✅ 超时设置合理
 ```
 
 ## 📋 API 设计 (计划中)
@@ -262,34 +336,52 @@ npm test
 - [x] 集成反检测机制 (Playwright + Stealth)
 - [x] 创建端到端测试验证整个流程
 
-**Phase 2: 可扩展性与健壮性** 🚧 **进行中**
+**Phase 2: 多源支持与智能验证** ✅ **已完成**
 
-- [ ] 重构为通用的 `Source` 架构支持更多网站
-- [ ] 开发 `Source` 管理器
+- [x] 实现 ShenQiZhe.com 搜索引擎 (`ShenQiZheSource`)
+- [x] 创建通用验证器架构 (`BaseValidator`)
+- [x] 开发 ShenQiZhe 专用验证器 (`ShenQiZheValidatorService`)
+- [x] 实现智能验证器选择机制
+- [x] 集成多源并行搜索功能
+- [x] 完善测试覆盖（集成测试 + 单元测试）
+
+**Phase 3: 可扩展性与健壮性** 🚧 **进行中**
+
+- [ ] 开发更多网站的 `Source` 实现
 - [ ] 引入 Redis 进行链接缓存
+- [ ] 实现搜索结果去重和排序
 
-**Phase 3: API 服务化** 📋 **计划中**
+**Phase 4: API 服务化** 📋 **计划中**
 
 - [ ] 搭建 Express 服务器
 - [ ] 实现异步任务 API (`/search`, `/results/:taskId`)
 - [ ] 集成 BullMQ 管理后台搜索任务
 
-**Phase 4: 高级功能与部署** 📋 **计划中**
+**Phase 5: 高级功能与部署** 📋 **计划中**
 
 - [ ] 集成代理 IP 支持
 - [ ] 完善日志和监控
 - [ ] 编写 Dockerfile 进行容器化
-- [ ] MCP Server 集成
+- [ ] 性能优化和资源管理
 
 ## 🎉 成果展示
 
 当前实现已经达到了：
 
+- **🔄 多源搜索**: 同时从2个网站搜索，结果合并展示
+- **🧠 智能验证**: 根据URL自动选择对应验证器
 - **🎯 高精度验证**: 五层验证机制确保100%可播放性
 - **🚀 高效并发**: 同时验证多个视频链接
-- **🛡️ 反检测能力**: 成功绕过 Gaze.run 的机器人检测
-- **📊 多画质支持**: 自动识别720P/1080P等不同画质
-- **✅ 端到端测试**: 完整的搜索→验证→结果流程验证
+- **🛡️ 反检测能力**: 成功绕过网站的机器人检测
+- **📊 多画质支持**: 自动识别720P/1080P/HD等不同画质
+- **🏗️ 可扩展架构**: 基于抽象基类的模块化设计
+- **✅ 完整测试**: 覆盖搜索、验证、集成的全面测试
+
+**技术亮点：**
+- 🎭 **验证器多态**: 同一接口支持不同网站的播放器结构
+- 🔀 **并行处理**: 多源搜索和多链接验证同时进行
+- 🎪 **iframe 支持**: 处理复杂的嵌套播放器结构
+- 🛠️ **MCP 集成**: 完整的 AI 工具支持，包括 SSE 实时通知
 
 这为后续扩展到更多视频网站和构建完整的API服务奠定了坚实的基础！
 

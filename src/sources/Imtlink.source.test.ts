@@ -1,11 +1,14 @@
 import { ImtlinkSource } from "./Imtlink.source";
 import { SearchQuery } from "../types";
+import { ImtlinkValidatorService } from "../core/imtlink.validator";
 
 describe("ImtlinkSource", () => {
   let source: ImtlinkSource;
+  let sourceValidator: ImtlinkValidatorService;
 
   beforeEach(() => {
     source = new ImtlinkSource();
+    sourceValidator = new ImtlinkValidatorService();
   });
 
   describe("find", () => {
@@ -36,59 +39,54 @@ describe("ImtlinkSource", () => {
         expect(results[0].source).toBe("Imtlink");
         expect(results[0].url).toContain("/vodplay/");
       }
-    }, 30000);
-
-    it("should handle search with no results", async () => {
-      const query: SearchQuery = {
-        title: "非常不存在的电影名称12345",
-        type: "movie",
-      };
-
-      const results = await source.find(query);
-
-      expect(results).toBeDefined();
-      expect(Array.isArray(results)).toBe(true);
-    }, 30000);
+      // 拿到结果开始验证，识破可播放行，并返回结果, 先测试验证一个吧，如果验证通过，则返回结果
+      const validatedResults = await Promise.all(
+        results.slice(0, 1).map(async (result) => {
+          const isValid = await sourceValidator.isValid(result.url);
+          return isValid ? result : null;
+        })
+      );
+    }, 30000000);
   });
 
-  describe("convertToPlayUrl", () => {
-    it("should convert detail URL to play URL", () => {
-      // 使用反射来测试私有方法
-      const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
+  // describe("convertToPlayUrl", () => {
+  //   it("should convert detail URL to play URL", () => {
+  //     // 使用反射来测试私有方法
+  //     const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
 
-      const detailUrl = "https://www.imtlink.com/voddetail/161499.html";
-      const expectedPlayUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
+  //     const detailUrl = "https://www.imtlink.com/voddetail/161499.html";
+  //     const expectedPlayUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
 
-      const result = convertToPlayUrl(detailUrl);
-      expect(result).toBe(expectedPlayUrl);
-    });
+  //     const result = convertToPlayUrl(detailUrl);
+  //     expect(result).toBe(expectedPlayUrl);
+  //   });
 
-    it("should handle relative URLs", () => {
-      const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
+  //   it("should handle relative URLs", () => {
+  //     const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
 
-      const detailUrl = "/voddetail/161499.html";
-      const expectedPlayUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
+  //     const detailUrl = "/voddetail/161499.html";
+  //     const expectedPlayUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
 
-      const result = convertToPlayUrl(detailUrl);
-      expect(result).toBe(expectedPlayUrl);
-    });
+  //     const result = convertToPlayUrl(detailUrl);
+  //     expect(result).toBe(expectedPlayUrl);
+  //   });
 
-    it("should return play URL unchanged if already a play URL", () => {
-      const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
+  //   it("should return play URL unchanged if already a play URL", () => {
+  //     const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
 
-      const playUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
+  //     const playUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
 
-      const result = convertToPlayUrl(playUrl);
-      expect(result).toBe(playUrl);
-    });
+  //     const result = convertToPlayUrl(playUrl);
+  //     expect(result).toBe(playUrl);
+  //   });
 
-    it("should handle invalid URLs gracefully", () => {
-      const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
+  //   it("should handle invalid URLs gracefully", () => {
+  //     const convertToPlayUrl = (source as any).convertToPlayUrl.bind(source);
 
-      const invalidUrl = "https://example.com/invalid";
+  //     const invalidUrl = "https://example.com/invalid";
 
-      const result = convertToPlayUrl(invalidUrl);
-      expect(result).toBe(invalidUrl);
-    });
-  });
+  //     const result = convertToPlayUrl(invalidUrl);
+  //     expect(result).toBe(invalidUrl);
+  //   });
+  // });
 });

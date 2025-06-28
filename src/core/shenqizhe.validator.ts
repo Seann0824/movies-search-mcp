@@ -1,53 +1,156 @@
-import { Page, Frame, FrameLocator } from "playwright";
-import { BaseValidator, ValidatorConfig } from "./base.validator";
+import { chromium } from "playwright-extra";
+import stealth from "puppeteer-extra-plugin-stealth";
+import { Page, FrameLocator } from "playwright";
+
+// Apply the stealth plugin
+chromium.use(stealth());
 
 /**
  * 神奇者网站视频验证器
  * 专门用于验证 shenqizhe.com 网站的视频播放页面
  */
-export class ShenQiZheValidatorService extends BaseValidator {
-  constructor() {
-    const config: ValidatorConfig = {
-      playerContainerSelector: ".MacPlayer",
-      iframeSelector: "#playleft iframe",
-      validationTimeout: 15000, // 神奇者网站可能需要更长时间加载
-      playbackTestTimeout: 5000,
-      requirePlayButtonClick: false, // 神奇者网站通常自动播放
-    };
-    super(config);
+export class ShenQiZheValidatorService {
+  /**
+   * 验证 ShenQiZhe 播放页面URL
+   * @param playPageUrl ShenQiZhe播放页面URL (例如: https://www.shenqizhe.com/vodplay/161499-1-1.html)
+   * @returns 如果页面有效则返回true，否则返回false
+   */
+  public async isValid(playPageUrl: string): Promise<boolean> {
+    if (!playPageUrl || !playPageUrl.includes("shenqizhe.com/vodplay/")) {
+      return false;
+    }
+
+    const browser = await chromium.launch({
+      headless: true,
+      channel: "chrome", // 使用系统的Chrome浏览器
+    });
+
+    try {
+      const context = await browser.newContext({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      });
+
+      const page = await context.newPage();
+
+      // 捕获控制台错误
+      page.on("pageerror", (error) => {
+        console.error(`[ShenQiZheValidator] Page Error: ${error.message}`);
+      });
+      page.on("console", async (msg) => {
+        if (msg.type() === "error") {
+          console.error(`[ShenQiZheValidator] Console Error: ${msg.text()}`);
+        }
+      });
+
+      // 开始监听视频元素
+      const videoFoundPromise = this.waitForVideoElement(page);
+
+      await page.goto(playPageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+
+      // 等待视频验证结果
+      return await videoFoundPromise;
+    } catch (error) {
+      console.error(
+        `[ShenQiZheValidator] Error validating ${playPageUrl}:`,
+        error
+      );
+      return false;
+    } finally {
+      await browser.close();
+    }
   }
 
   /**
-   * 检查URL是否为有效的神奇者播放页面
+   * 监听视频元素，检查是否可以正常播放
    */
-  protected isValidUrl(url: string): boolean {
-    return url.includes("shenqizhe.com/vodplay/");
+  private waitForVideoElement(page: Page): Promise<boolean> {
+    return new Promise((resolve) => {
+      let isResolved = false;
+
+      const cleanup = () => {
+        if (timeout) clearTimeout(timeout);
+        if (checkInterval) clearInterval(checkInterval);
+      };
+
+      const resolveOnce = (result: boolean) => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        console.log(
+          "[ShenQiZheValidator] Validation timed out after 15 seconds. Video element not detected."
+        );
+        resolveOnce(false);
+      }, 15000); // 15秒超时
+
+      // 每秒检查一次视频状态
+      const checkInterval = setInterval(async () => {
+        // 检查页面是否已关闭
+        if (page.isClosed()) {
+          console.log(
+            "[ShenQiZheValidator] Page is closed, stopping validation"
+          );
+          resolveOnce(false);
+          return;
+        }
+
+        try {
+          const videoStatus = await this.checkVideoStatus(page);
+          if (videoStatus) {
+            console.log("[ShenQiZheValidator] Video validation successful");
+            resolveOnce(true);
+          }
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage.includes(
+              "Target page, context or browser has been closed"
+            )
+          ) {
+            console.log(
+              "[ShenQiZheValidator] Page closed during validation, stopping"
+            );
+            resolveOnce(false);
+            return;
+          }
+          // 其他错误继续轮询
+          console.log(
+            `[ShenQiZheValidator] Error during video check: ${errorMessage}`
+          );
+        }
+      }, 1000); // 每秒检查一次
+    });
   }
 
   /**
    * 检查视频状态
    * 神奇者网站使用iframe播放器，需要特殊处理
    */
-  protected async checkVideoStatus(page: Page): Promise<boolean> {
+  private async checkVideoStatus(page: Page): Promise<boolean> {
     try {
       // 首先检查播放器容器是否存在
-      const playerExists = await page
-        .locator(this.config.playerContainerSelector!)
-        .isVisible();
+      const playerExists = await page.locator(".MacPlayer").isVisible();
       if (!playerExists) {
         return false;
       }
 
       // 检查iframe是否存在并已加载
-      const iframeExists = await page
-        .locator(this.config.iframeSelector!)
-        .isVisible();
+      const iframeExists = await page.locator("#playleft iframe").isVisible();
       if (!iframeExists) {
         return false;
       }
 
       // 获取iframe元素
-      const iframe = await page.locator(this.config.iframeSelector!).first();
+      const iframe = await page.locator("#playleft iframe").first();
 
       // 检查iframe的src属性是否有效
       const iframeSrc = await iframe.getAttribute("src");
@@ -60,7 +163,7 @@ export class ShenQiZheValidatorService extends BaseValidator {
       // 尝试访问iframe内容来验证视频
       try {
         // 使用 frameLocator 来访问 iframe 内容
-        const frameLocator = page.frameLocator(this.config.iframeSelector!);
+        const frameLocator = page.frameLocator("#playleft iframe");
 
         // 在iframe内查找视频元素
         const videoElementExists = await this.checkVideoInFrame(frameLocator);
@@ -87,7 +190,7 @@ export class ShenQiZheValidatorService extends BaseValidator {
       // 最后的备用检查：确认页面上有播放相关的元素
       return await this.checkPlayerIndicators(page);
     } catch (error) {
-      console.error(`[ShenQiZheValidator] Error in checkVideoStatus: ${error}`);
+      console.error("[ShenQiZheValidator] Error in checkVideoStatus:", error);
       return false;
     }
   }

@@ -1,7 +1,6 @@
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
 import { Page, FrameLocator } from "playwright";
-import { BaseValidator, ValidatorConfig } from "./base.validator";
 
 // Apply the stealth plugin
 chromium.use(stealth());
@@ -10,24 +9,68 @@ chromium.use(stealth());
  * Imtlink网站的视频验证器
  * 专门用于验证 imtlink.com 播放页面的可用性
  */
-export class ImtlinkValidatorService extends BaseValidator {
-  constructor() {
-    const config: ValidatorConfig = {
-      playerContainerSelector: ".MacPlayer",
-      iframeSelector: "#playleft iframe", // 更精确的iframe选择器
-      validationTimeout: 15000,
-      playbackTestTimeout: 5000,
-      requirePlayButtonClick: false, // Imtlink通常自动播放
-    };
-    super(config);
+export class ImtlinkValidatorService {
+  /**
+   * 验证 Imtlink 播放页面URL
+   * @param playPageUrl Imtlink播放页面URL (例如: https://www.imtlink.com/vodplay/161499-1-1.html)
+   * @returns 如果页面有效则返回true，否则返回false
+   */
+  public async isValid(playPageUrl: string): Promise<boolean> {
+    if (!playPageUrl || !playPageUrl.includes("imtlink.com/vodplay/")) {
+      return false;
+    }
+
+    const browser = await chromium.launch({
+      headless: true, // 改回headless模式
+      channel: "chrome", // 使用系统的Chrome浏览器
+    });
+
+    try {
+      const context = await browser.newContext({
+        userAgent:
+          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
+      });
+
+      const page = await context.newPage();
+
+      // 捕获控制台错误
+      page.on("pageerror", (error) => {
+        console.error(`[ImtlinkValidator] Page Error: ${error.message}`);
+      });
+      page.on("console", async (msg) => {
+        if (msg.type() === "error") {
+          console.error(`[ImtlinkValidator] Console Error: ${msg.text()}`);
+        }
+      });
+
+      // 设置路由拦截以阻止广告和不必要的资源
+      await this.setupRouteInterception(page);
+
+      // 开始监听视频元素
+      const videoFoundPromise = this.waitForVideoElement(page);
+
+      await page.goto(playPageUrl, {
+        waitUntil: "domcontentloaded",
+        timeout: 20000,
+      });
+
+      // 等待视频验证结果
+      return await videoFoundPromise;
+    } catch (error) {
+      console.error(
+        `[ImtlinkValidator] Error validating ${playPageUrl}:`,
+        error
+      );
+      return false;
+    } finally {
+      await browser.close();
+    }
   }
 
-  protected isValidUrl(url: string): boolean {
-    return url.includes("imtlink.com/vodplay/");
-  }
-
-  protected async setupRouteInterception(page: Page): Promise<void> {
-    // 拦截广告和不必要的资源
+  /**
+   * 设置路由拦截以阻止广告和不必要的资源
+   */
+  private async setupRouteInterception(page: Page): Promise<void> {
     await page.route("**/*", (route) => {
       const url = route.request().url();
       const resourceType = route.request().resourceType();
@@ -49,30 +92,92 @@ export class ImtlinkValidatorService extends BaseValidator {
     });
   }
 
-  protected async checkVideoStatus(page: Page): Promise<boolean> {
+  /**
+   * 监听视频元素，检查是否可以正常播放
+   */
+  private waitForVideoElement(page: Page): Promise<boolean> {
+    return new Promise((resolve) => {
+      let isResolved = false;
+
+      const cleanup = () => {
+        if (timeout) clearTimeout(timeout);
+        if (checkInterval) clearInterval(checkInterval);
+      };
+
+      const resolveOnce = (result: boolean) => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          resolve(result);
+        }
+      };
+
+      const timeout = setTimeout(() => {
+        console.log(
+          "[ImtlinkValidator] Validation timed out after 15 seconds. Video element not detected."
+        );
+        resolveOnce(false);
+      }, 15000); // 15秒超时
+
+      // 每2秒检查一次视频状态
+      const checkInterval = setInterval(async () => {
+        // 检查页面是否已关闭
+        if (page.isClosed()) {
+          console.log("[ImtlinkValidator] Page is closed, stopping validation");
+          resolveOnce(false);
+          return;
+        }
+
+        try {
+          const videoStatus = await this.checkVideoStatus(page);
+          if (videoStatus) {
+            console.log("[ImtlinkValidator] Video validation successful");
+            resolveOnce(true);
+          }
+        } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage.includes(
+              "Target page, context or browser has been closed"
+            )
+          ) {
+            console.log(
+              "[ImtlinkValidator] Page closed during validation, stopping"
+            );
+            resolveOnce(false);
+            return;
+          }
+          // 其他错误继续轮询
+          console.log(
+            `[ImtlinkValidator] Error during video check: ${errorMessage}`
+          );
+        }
+      }, 2000); // 每2秒检查一次
+    });
+  }
+
+  /**
+   * 检查视频状态 - 根据实际DOM结构
+   */
+  private async checkVideoStatus(page: Page): Promise<boolean> {
     try {
-      // 首先检查播放器容器是否存在
-      const playerExists = await page
-        .locator(this.config.playerContainerSelector!)
-        .isVisible();
-      if (!playerExists) {
-        console.log("[ImtlinkValidator] Player container not found");
+      // 1. 首先检查 MacPlayer 容器是否存在
+      const macPlayerExists = await page.locator(".MacPlayer").isVisible();
+      if (!macPlayerExists) {
+        console.log("[ImtlinkValidator] MacPlayer container not found");
         return false;
       }
 
-      // 检查iframe是否存在并已加载
-      const iframeExists = await page
-        .locator(this.config.iframeSelector!)
-        .isVisible();
-      if (!iframeExists) {
-        console.log("[ImtlinkValidator] Iframe not found");
+      // 2. 检查 playleft 区域的 iframe 是否存在
+      const playLeftIframe = await page.locator("#playleft iframe").isVisible();
+      if (!playLeftIframe) {
+        console.log("[ImtlinkValidator] #playleft iframe not found");
         return false;
       }
 
-      // 获取iframe元素
-      const iframe = await page.locator(this.config.iframeSelector!).first();
-
-      // 检查iframe的src属性是否有效
+      // 3. 获取iframe的src属性
+      const iframe = await page.locator("#playleft iframe").first();
       const iframeSrc = await iframe.getAttribute("src");
       if (!iframeSrc || iframeSrc.trim() === "") {
         console.log("[ImtlinkValidator] Iframe has no src");
@@ -81,52 +186,48 @@ export class ImtlinkValidatorService extends BaseValidator {
 
       console.log(`[ImtlinkValidator] Found iframe with src: ${iframeSrc}`);
 
-      // 尝试访问iframe内容来验证视频
-      try {
-        // 使用 frameLocator 来访问 iframe 内容
-        const frameLocator = page.frameLocator(this.config.iframeSelector!);
+      // 4. 如果iframe src包含播放器路径，说明是有效的播放器
+      if (iframeSrc.includes("/static/player/dplayer.html")) {
+        console.log("[ImtlinkValidator] Found dplayer iframe");
 
-        // 在iframe内查找视频元素
-        const videoElementExists = await this.checkVideoInFrame(frameLocator);
-        if (videoElementExists) {
-          console.log("[ImtlinkValidator] Video element found in iframe");
-          return true;
-        }
-      } catch (iframeError) {
-        console.log(`[ImtlinkValidator] Iframe access failed: ${iframeError}`);
-        // 如果无法访问iframe内容（可能是跨域），我们认为iframe存在且有src就是有效的
-        if (
-          iframeSrc.includes("/static/player/") ||
-          iframeSrc.includes("dplayer") ||
-          iframeSrc.includes("player")
-        ) {
+        // 5. 尝试访问iframe内的视频元素
+        try {
+          const frameLocator = page.frameLocator("#playleft iframe");
+
+          // 等待iframe加载完成
+          await page.waitForTimeout(2000);
+
+          // 检查iframe内的视频元素：//*[@id="playerCnt"]/div[2]/video
+          const videoInFrame = await this.checkVideoInFrame(frameLocator);
+          if (videoInFrame) {
+            console.log(
+              "[ImtlinkValidator] Video element found and validated in iframe"
+            );
+            return true;
+          }
+
+          // 如果无法直接访问iframe内容，检查iframe是否已加载
           console.log(
-            "[ImtlinkValidator] Iframe appears to be a valid player based on src"
+            "[ImtlinkValidator] Cannot access iframe content, but iframe appears valid"
           );
+          return true;
+        } catch (iframeError) {
+          console.log(
+            `[ImtlinkValidator] Iframe access failed: ${iframeError}`
+          );
+          // 即使无法访问iframe内容，如果iframe存在且src正确，也认为是有效的
           return true;
         }
       }
 
-      // 检查JavaScript变量中的视频URL
-      const hasVideoUrl = await page.evaluate(() => {
-        // @ts-ignore - player_aaaa is a global variable on the page
-        const win = window as any;
-        if (typeof win.player_aaaa !== "undefined" && win.player_aaaa?.url) {
-          console.log("Found video URL in player_aaaa:", win.player_aaaa.url);
-          return true;
-        }
-        return false;
-      });
-
-      if (hasVideoUrl) {
-        console.log(
-          "[ImtlinkValidator] Found video URL in player configuration"
-        );
+      // 6. 备用检查：查看页面上的JavaScript播放器配置
+      const hasPlayerConfig = await this.checkPlayerConfiguration(page);
+      if (hasPlayerConfig) {
+        console.log("[ImtlinkValidator] Found valid player configuration");
         return true;
       }
 
-      // 最后的备用检查：确认页面上有播放相关的元素
-      return await this.checkPlayerIndicators(page);
+      return false;
     } catch (error) {
       console.error("[ImtlinkValidator] Error in checkVideoStatus:", error);
       return false;
@@ -134,30 +235,61 @@ export class ImtlinkValidatorService extends BaseValidator {
   }
 
   /**
-   * 在iframe内查找视频元素
+   * 在iframe内查找视频元素 - 根据实际DOM路径
    */
   private async checkVideoInFrame(
     frameLocator: FrameLocator
   ): Promise<boolean> {
     try {
-      // 常见的视频元素选择器
+      // 根据用户提供的XPath：//*[@id="playerCnt"]/div[2]/video
+      // 转换为CSS选择器：#playerCnt > div:nth-child(2) > video
       const videoSelectors = [
-        "video",
-        ".dplayer-video video",
-        ".video-js video",
-        "[id*='video']",
-        "[class*='video']",
+        "#playerCnt > div:nth-child(2) > video", // 用户提供的具体路径
+        "#playerCnt video", // 更宽泛的选择器
+        "video", // 通用视频元素
+        ".dplayer-video video", // dplayer的视频元素
+        '[id*="video"]', // ID包含video的元素
       ];
 
       for (const selector of videoSelectors) {
         try {
+          console.log(`[ImtlinkValidator] Checking selector: ${selector}`);
           const videoLocator = frameLocator.locator(selector).first();
-          const videoExists = await videoLocator.isVisible({ timeout: 2000 });
+
+          // 等待元素出现
+          const videoExists = await videoLocator.isVisible({ timeout: 3000 });
           if (videoExists) {
             console.log(
               `[ImtlinkValidator] Found video element with selector: ${selector}`
             );
-            return true;
+
+            // 进一步验证视频元素是否有有效的src或其他属性
+            try {
+              const videoSrc = await videoLocator.getAttribute("src");
+              const videoCurrentSrc = await videoLocator.evaluate(
+                (video: HTMLVideoElement) => video.currentSrc
+              );
+              const videoReadyState = await videoLocator.evaluate(
+                (video: HTMLVideoElement) => video.readyState
+              );
+
+              console.log(
+                `[ImtlinkValidator] Video details - src: ${videoSrc}, currentSrc: ${videoCurrentSrc}, readyState: ${videoReadyState}`
+              );
+
+              // 如果视频有src或currentSrc，或者readyState > 0，说明视频已加载
+              if (videoSrc || videoCurrentSrc || videoReadyState > 0) {
+                console.log(
+                  "[ImtlinkValidator] Video element has valid source"
+                );
+                return true;
+              }
+            } catch (evalError) {
+              console.log(
+                `[ImtlinkValidator] Cannot evaluate video properties, but element exists`
+              );
+              return true; // 元素存在即可
+            }
           }
         } catch (selectorError) {
           // 继续尝试下一个选择器
@@ -175,20 +307,30 @@ export class ImtlinkValidatorService extends BaseValidator {
   }
 
   /**
-   * 检查页面上的播放器指示器
+   * 检查页面上的播放器配置
    */
-  private async checkPlayerIndicators(page: Page): Promise<boolean> {
+  private async checkPlayerConfiguration(page: Page): Promise<boolean> {
     try {
-      // 检查是否有播放相关的JavaScript变量或元素
-      const hasPlayerIndicators = await page.evaluate(() => {
-        // 检查全局变量
-        if (typeof (window as any).player_aaaa !== "undefined") {
+      const hasPlayerConfig = await page.evaluate(() => {
+        // 检查全局播放器变量
+        const win = window as any;
+
+        // 检查 player_aaaa 变量
+        if (typeof win.player_aaaa !== "undefined" && win.player_aaaa?.url) {
+          console.log("Found video URL in player_aaaa:", win.player_aaaa.url);
+          return true;
+        }
+
+        // 检查其他可能的播放器配置
+        if (typeof win.MacPlayerConfig !== "undefined") {
+          console.log("Found MacPlayerConfig");
           return true;
         }
 
         // 检查是否有播放链接
         const playLink = document.querySelector("#bfurl");
         if (playLink && playLink.getAttribute("href")) {
+          console.log("Found play link");
           return true;
         }
 
@@ -199,6 +341,18 @@ export class ImtlinkValidatorService extends BaseValidator {
             script.src &&
             (script.src.includes("player") || script.src.includes("dplayer"))
           ) {
+            console.log("Found player script:", script.src);
+            return true;
+          }
+
+          // 检查内联脚本中的播放器配置
+          if (
+            script.textContent &&
+            (script.textContent.includes("player_aaaa") ||
+              script.textContent.includes("MacPlayerConfig") ||
+              script.textContent.includes("dplayer"))
+          ) {
+            console.log("Found player configuration in script");
             return true;
           }
         }
@@ -206,15 +360,10 @@ export class ImtlinkValidatorService extends BaseValidator {
         return false;
       });
 
-      if (hasPlayerIndicators) {
-        console.log("[ImtlinkValidator] Found player indicators on page");
-        return true;
-      }
-
-      return false;
+      return hasPlayerConfig;
     } catch (error) {
       console.log(
-        `[ImtlinkValidator] Error checking player indicators: ${error}`
+        `[ImtlinkValidator] Error checking player configuration: ${error}`
       );
       return false;
     }

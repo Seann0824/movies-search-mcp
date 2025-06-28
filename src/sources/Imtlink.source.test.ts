@@ -40,7 +40,7 @@ describe("ImtlinkSource", () => {
         expect(results[0].url).toContain("/vodplay/");
       }
       // 拿到结果开始验证，识破可播放行，并返回结果, 先测试验证一个吧，如果验证通过，则返回结果
-      const validatedResults = await Promise.all(
+      const validatedResults = await Promise.allSettled(
         results.slice(0, 1).map(async (result) => {
           const isValid = await sourceValidator.isValid(result.url);
           return isValid ? result : null;

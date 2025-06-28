@@ -1,6 +1,6 @@
 import { ImtlinkValidatorService } from "./imtlink.validator";
 
-describe("ImtlinkValidatorService - DOM Structure Based", () => {
+describe("ImtlinkValidatorService - Iframe Based Validation", () => {
   let validator: ImtlinkValidatorService;
 
   beforeEach(() => {
@@ -8,15 +8,15 @@ describe("ImtlinkValidatorService - DOM Structure Based", () => {
   });
 
   describe("isValid", () => {
-    it("should validate a working Imtlink play URL with proper DOM structure", async () => {
+    it("should validate a working Imtlink play URL based on iframe presence", async () => {
       // 使用一个真实的播放页面URL进行测试
       const playUrl = "https://www.imtlink.com/vodplay/161499-1-1.html";
 
       console.log(`Testing URL: ${playUrl}`);
       console.log("Looking for DOM structure:");
       console.log("  .MacPlayer container");
-      console.log("  #playleft iframe with src='/static/player/dplayer.html'");
-      console.log("  iframe内的 #playerCnt > div:nth-child(2) > video 元素");
+      console.log("  #playleft iframe with valid player src");
+      console.log("  Player configuration (不访问iframe内容)");
 
       const isValid = await validator.isValid(playUrl);
 
@@ -25,7 +25,7 @@ describe("ImtlinkValidatorService - DOM Structure Based", () => {
       expect(typeof isValid).toBe("boolean");
 
       if (isValid) {
-        console.log("✅ URL is valid and has proper video structure");
+        console.log("✅ URL is valid and has proper iframe structure");
       } else {
         console.log("❌ URL validation failed");
       }
@@ -94,5 +94,26 @@ describe("ImtlinkValidatorService - DOM Structure Based", () => {
         }
       }
     }, 30000);
+  });
+
+  describe("iframe validation logic", () => {
+    it("should recognize valid player iframe sources", () => {
+      const validator = new ImtlinkValidatorService();
+      // 测试私有方法 - 使用类型断言访问
+      const isValidSrc = (validator as any).isValidPlayerIframeSrc.bind(
+        validator
+      );
+
+      // 有效的iframe src
+      expect(isValidSrc("/static/player/dplayer.html")).toBe(true);
+      expect(isValidSrc("/static/player/video.html")).toBe(true);
+      expect(isValidSrc("https://example.com/dplayer.html")).toBe(true);
+      expect(isValidSrc("/path/to/player.html")).toBe(true);
+
+      // 无效的iframe src
+      expect(isValidSrc("")).toBe(false);
+      expect(isValidSrc("/some/random/page.html")).toBe(false);
+      expect(isValidSrc("https://example.com/index.html")).toBe(false);
+    });
   });
 });

@@ -8,6 +8,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
+import { ShenQiZheSource } from "./sources/ShenQiZhe.source";
 import { GazeValidatorService } from "./core/gaze.validator";
 import { SearchQuery, SearchResult } from "./types/index";
 
@@ -20,6 +21,7 @@ dotenv.config();
 class MovieSearchMCPServer {
   private server: Server;
   private gazeSource: GazeSource;
+  private shenQiZheSource: ShenQiZheSource;
   private gazeValidator: GazeValidatorService;
 
   constructor() {
@@ -36,6 +38,7 @@ class MovieSearchMCPServer {
     );
 
     this.gazeSource = new GazeSource();
+    this.shenQiZheSource = new ShenQiZheSource();
     this.gazeValidator = new GazeValidatorService();
 
     this.setupToolHandlers();
@@ -118,8 +121,13 @@ class MovieSearchMCPServer {
               ...(episode && { episode }),
             };
 
-            // 搜索所有潜在的播放页面（不进行验证）
-            const searchResults = await this.gazeSource.find(query);
+            // 并行搜索所有源
+            const sources = [this.gazeSource, this.shenQiZheSource];
+            const searchPromises = sources.map((source) => source.find(query));
+            const resultsFromAllSources = await Promise.all(searchPromises);
+
+            // 合并并展平结果
+            const searchResults = resultsFromAllSources.flat();
 
             if (searchResults.length === 0) {
               return {

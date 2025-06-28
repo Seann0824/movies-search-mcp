@@ -1,29 +1,63 @@
 {
-  "name": "movies-search-tool",
+  "name": "@sean/movies-search-tool",
   "version": "1.0.0",
-  "description": "Smart tool to find and validate movie/tv-show resources.",
-  "main": "dist/server.js",
+  "description": "Smart MCP tool to find and validate movie/tv-show resources with multiple sources support",
+  "main": "dist/cli.js",
+  "bin": {
+    "movies-search-tool": "dist/cli.js",
+    "mst": "dist/cli.js"
+  },
+  "files": [
+    "dist/**/*",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "start": "node dist/server.js",
     "mcp": "node dist/mcp-server.js",
     "mcp:sse": "node dist/mcp-server-sse.js",
+    "cli": "node dist/cli.js",
+    "cli:sse": "node dist/cli.js --sse",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "dev:mcp": "ts-node-dev --respawn --transpile-only src/mcp-server.ts",
     "dev:mcp:sse": "ts-node-dev --respawn --transpile-only src/mcp-server-sse.ts",
-    "build": "tsc",
+    "dev:cli": "ts-node-dev --respawn --transpile-only src/cli.ts",
+    "dev:cli:sse": "ts-node-dev --respawn --transpile-only src/cli.ts --sse",
+    "clean": "rm -rf dist",
+    "copy-assets": "cp -r src/sdk-fake dist/",
+    "build": "npm run clean && tsc && npm run copy-assets",
+    "prepublishOnly": "npm run build",
+    "test:package": "node scripts/test-package.js",
     "lint": "eslint . --ext .ts",
     "test": "jest",
     "test:mcp": "node test-mcp.js",
     "test:mcp:sse": "node test-mcp-sse.js"
   },
   "keywords": [
+    "mcp",
+    "mcp-server",
     "mcp-tool",
     "movie",
+    "tv-show",
     "search",
-    "crawler"
+    "crawler",
+    "video",
+    "streaming",
+    "model-context-protocol"
   ],
-  "author": "",
-  "license": "ISC",
+  "author": "Sean Wang <seanwangjs@example.com>",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/seanwangjs/movies-search-tool.git"
+  },
+  "bugs": {
+    "url": "https://github.com/seanwangjs/movies-search-tool/issues"
+  },
+  "homepage": "https://github.com/seanwangjs/movies-search-tool#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.13.2",
     "bullmq": "^5.7.13",

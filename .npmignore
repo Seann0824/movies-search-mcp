@@ -1,0 +1,54 @@
+# Source files
+src/
+*.ts
+!*.d.ts
+
+# Development files
+.env*
+*.log
+logs/
+
+# Testing
+**/*.test.*
+**/*.spec.*
+jest.config.js
+coverage/
+
+# Development dependencies
+node_modules/
+.npm
+.nyc_output
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store*
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Build config
+tsconfig*.json
+
+# Development scripts
+setting.js
+scripts/
+
+# Documentation (except README)
+docs/
+*.md
+!README.md
+
+# Examples and debug files
+**/debug-example.* 

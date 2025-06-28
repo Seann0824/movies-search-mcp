@@ -23,12 +23,27 @@ export class GazeValidatorService {
       return false;
     }
 
-    const browser = await chromium.launch({
-      headless: true,
-      channel: "chrome", // Use the system's Chrome browser instead of Chromium
-    });
+    let browser;
+    let context;
+    let page;
+
     try {
-      const context = await browser.newContext({
+      browser = await chromium.launch({
+        headless: true,
+        channel: "chrome", // Use the system's Chrome browser instead of Chromium
+        args: [
+          "--no-sandbox",
+          "--disable-setuid-sandbox",
+          "--disable-dev-shm-usage",
+          "--disable-accelerated-2d-canvas",
+          "--no-first-run",
+          "--no-zygote",
+          "--single-process", // 使用单进程模式，减少资源竞争
+          "--disable-gpu",
+        ],
+      });
+
+      context = await browser.newContext({
         userAgent:
           "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/137.0.0.0 Safari/537.36",
       });
@@ -40,7 +55,7 @@ export class GazeValidatorService {
           logger.log("[GazeValidator] console.clear() was called and blocked.");
       });
 
-      const page = await context.newPage();
+      page = await context.newPage();
 
       // --- Capture Console Errors ---
       page.on("pageerror", (error) => {
@@ -58,14 +73,29 @@ export class GazeValidatorService {
         __dirname,
         "../../src/sdk-fake/gaze/devtools-detector.min.js"
       );
-      const fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
+
+      let fakeDetectorScript;
+      try {
+        fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
+      } catch (fileError) {
+        logger.error(
+          `[GazeValidator] 无法读取检测脚本文件: ${fakeDetectorPath}`
+        );
+        return false;
+      }
+
       // Intercept the original detector script and serve the local version instead
       await page.route("**/devtools-detector.min.js", (route) => {
-        route.fulfill({
-          status: 200,
-          contentType: "application/javascript; charset=utf-8",
-          body: fakeDetectorScript,
-        });
+        try {
+          route.fulfill({
+            status: 200,
+            contentType: "application/javascript; charset=utf-8",
+            body: fakeDetectorScript,
+          });
+        } catch (error) {
+          logger.error(`[GazeValidator] 路由处理错误:`, error);
+          route.continue();
+        }
       });
 
       // Start listening for the target network response in the background
@@ -96,7 +126,30 @@ export class GazeValidatorService {
       logger.error(`[GazeValidator] Error validating ${playPageUrl}:`, error);
       return false;
     } finally {
-      await browser.close();
+      // 确保资源正确清理
+      try {
+        if (page && !page.isClosed()) {
+          await page.close();
+        }
+      } catch (error) {
+        logger.error(`[GazeValidator] 关闭页面时出错:`, error);
+      }
+
+      try {
+        if (context) {
+          await context.close();
+        }
+      } catch (error) {
+        logger.error(`[GazeValidator] 关闭上下文时出错:`, error);
+      }
+
+      try {
+        if (browser) {
+          await browser.close();
+        }
+      } catch (error) {
+        logger.error(`[GazeValidator] 关闭浏览器时出错:`, error);
+      }
     }
   }
 

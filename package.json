@@ -3,7 +3,9 @@
   "version": "1.0.6",
   "description": "Smart MCP tool to find and validate movie/tv-show resources with multiple sources support",
   "main": "dist/cli.js",
-  "bin": "./dist/cli.js",
+  "bin": {
+    "movies-search-mcp": "dist/cli.js"
+  },
   "files": [
     "dist/**/*",
     "README.md",
@@ -46,7 +48,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Seann0824/movies-search-mcp.git"
+    "url": "git+https://github.com/Seann0824/movies-search-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/Seann0824/movies-search-mcp/issues"

@@ -1,6 +1,8 @@
 import { chromium } from "playwright-extra";
 import stealth from "puppeteer-extra-plugin-stealth";
-import { Page, FrameLocator } from "playwright";
+import { Page } from "playwright";
+import path from "path";
+import fs from "fs";
 import { logger } from "../utils/logger";
 
 // Apply the stealth plugin
@@ -34,6 +36,45 @@ export class ShenQiZheValidatorService {
 
       const page = await context.newPage();
 
+      // 读取本地的videojs.html检测脚本
+      const fakeDetectorPath = path.join(
+        __dirname,
+        "../../src/sdk-fake/shenqizhan/videojs.html"
+      );
+
+      const fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
+
+      // 调试信息
+      logger.debug("本地 videojs.html 文件路径:", fakeDetectorPath);
+      logger.debug("文件内容长度:", fakeDetectorScript.length);
+      logger.debug(
+        "文件内容预览:",
+        fakeDetectorScript.substring(0, 200) + "..."
+      );
+
+      // 拦截原始播放器脚本，用本地版本替换
+      await page.route("**/videojs.html", (route) => {
+        route.fulfill({
+          status: 200,
+          contentType: "text/html; charset=utf-8",
+          body: fakeDetectorScript,
+        });
+      });
+
+      // 拦截可能的其他播放器路径
+      await page.route("**/static/player/**", (route) => {
+        const url = route.request().url();
+        if (url.includes("videojs.html") || url.includes("player.html")) {
+          route.fulfill({
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            body: fakeDetectorScript,
+          });
+        } else {
+          route.continue();
+        }
+      });
+
       // 捕获控制台错误
       page.on("pageerror", (error) => {
         logger.error(`[ShenQiZheValidator] Page Error: ${error.message}`);
@@ -44,8 +85,8 @@ export class ShenQiZheValidatorService {
         }
       });
 
-      // 开始监听视频元素
-      const videoFoundPromise = this.waitForVideoElement(page);
+      // 设置 VIDEO_STATUS 消息监听器
+      const videoFoundPromise = this.waitForVideoStatusMessage(page);
 
       await page.goto(playPageUrl, {
         waitUntil: "domcontentloaded",
@@ -66,15 +107,22 @@ export class ShenQiZheValidatorService {
   }
 
   /**
-   * 监听视频元素，检查是否可以正常播放
+   * 等待来自iframe的VIDEO_STATUS消息
    */
-  private waitForVideoElement(page: Page): Promise<boolean> {
+  private waitForVideoStatusMessage(page: Page): Promise<boolean> {
     return new Promise((resolve) => {
       let isResolved = false;
+      let messageListener: any;
+      let consoleListener: any;
 
       const cleanup = () => {
         if (timeout) clearTimeout(timeout);
-        if (checkInterval) clearInterval(checkInterval);
+        if (messageListener) {
+          page.removeListener("console", messageListener);
+        }
+        if (consoleListener) {
+          page.removeListener("console", consoleListener);
+        }
       };
 
       const resolveOnce = (result: boolean) => {
@@ -85,199 +133,84 @@ export class ShenQiZheValidatorService {
         }
       };
 
+      // 15秒超时
       const timeout = setTimeout(() => {
         logger.log(
-          "[ShenQiZheValidator] Validation timed out after 15 seconds. Video element not detected."
+          "[ShenQiZheValidator] 15秒内未收到可播放的视频状态消息，验证失败"
         );
         resolveOnce(false);
-      }, 15000); // 15秒超时
+      }, 15000);
 
-      // 每秒检查一次视频状态
-      const checkInterval = setInterval(async () => {
-        // 检查页面是否已关闭
-        if (page.isClosed()) {
-          logger.log(
-            "[ShenQiZheValidator] Page is closed, stopping validation"
-          );
-          resolveOnce(false);
-          return;
+      // 监听控制台消息，捕获iframe内的视频状态
+      consoleListener = (msg: any) => {
+        const text = msg.text();
+
+        // 监听视频可播放性的直接日志
+        if (text.includes("[videojs] 视频可播放性: true")) {
+          logger.log("[ShenQiZheValidator] 检测到视频可播放，验证成功");
+          resolveOnce(true);
         }
 
-        try {
-          const videoStatus = await this.checkVideoStatus(page);
-          if (videoStatus) {
-            logger.log("[ShenQiZheValidator] Video validation successful");
-            resolveOnce(true);
-          }
-        } catch (error) {
-          const errorMessage =
-            error instanceof Error ? error.message : String(error);
-          if (
-            errorMessage.includes(
-              "Target page, context or browser has been closed"
-            )
-          ) {
-            logger.log(
-              "[ShenQiZheValidator] Page closed during validation, stopping"
-            );
-            resolveOnce(false);
-            return;
-          }
-          // 其他错误继续轮询
-          logger.log(
-            `[ShenQiZheValidator] Error during video check: ${errorMessage}`
-          );
-        }
-      }, 1000); // 每秒检查一次
-    });
-  }
-
-  /**
-   * 检查视频状态
-   * 神奇者网站使用iframe播放器，需要特殊处理
-   */
-  private async checkVideoStatus(page: Page): Promise<boolean> {
-    try {
-      // 首先检查播放器容器是否存在
-      const playerExists = await page.locator(".MacPlayer").isVisible();
-      if (!playerExists) {
-        return false;
-      }
-
-      // 检查iframe是否存在并已加载
-      const iframeExists = await page.locator("#playleft iframe").isVisible();
-      if (!iframeExists) {
-        return false;
-      }
-
-      // 获取iframe元素
-      const iframe = await page.locator("#playleft iframe").first();
-
-      // 检查iframe的src属性是否有效
-      const iframeSrc = await iframe.getAttribute("src");
-      if (!iframeSrc || iframeSrc.trim() === "") {
-        return false;
-      }
-
-      logger.log(`[ShenQiZheValidator] Found iframe with src: ${iframeSrc}`);
-
-      // 尝试访问iframe内容来验证视频
-      try {
-        // 使用 frameLocator 来访问 iframe 内容
-        const frameLocator = page.frameLocator("#playleft iframe");
-
-        // 在iframe内查找视频元素
-        const videoElementExists = await this.checkVideoInFrame(frameLocator);
-        if (videoElementExists) {
-          logger.log("[ShenQiZheValidator] Video element found in iframe");
-          return true;
-        }
-      } catch (iframeError) {
-        logger.log(`[ShenQiZheValidator] Iframe access failed: ${iframeError}`);
-        // 如果无法访问iframe内容（可能是跨域），我们认为iframe存在且有src就是有效的
-        if (
-          iframeSrc.includes("/static/player/") ||
-          iframeSrc.includes("player")
-        ) {
-          logger.log(
-            "[ShenQiZheValidator] Iframe appears to be a valid player based on src"
-          );
-          return true;
-        }
-      }
-
-      // 最后的备用检查：确认页面上有播放相关的元素
-      return await this.checkPlayerIndicators(page);
-    } catch (error) {
-      logger.error("[ShenQiZheValidator] Error in checkVideoStatus:", error);
-      return false;
-    }
-  }
-
-  /**
-   * 在iframe内查找视频元素
-   */
-  private async checkVideoInFrame(
-    frameLocator: FrameLocator
-  ): Promise<boolean> {
-    try {
-      // 常见的视频元素选择器
-      const videoSelectors = [
-        "video",
-        ".dplayer-video video",
-        ".video-js video",
-        "[id*='video']",
-        "[class*='video']",
-      ];
-
-      for (const selector of videoSelectors) {
-        try {
-          const videoLocator = frameLocator.locator(selector).first();
-          const videoExists = await videoLocator.isVisible({ timeout: 2000 });
-          if (videoExists) {
-            logger.log(
-              `[ShenQiZheValidator] Found video element with selector: ${selector}`
-            );
-            return true;
-          }
-        } catch (selectorError) {
-          // 继续尝试下一个选择器
-          continue;
-        }
-      }
-
-      return false;
-    } catch (error) {
-      logger.log(
-        `[ShenQiZheValidator] Error checking video in iframe: ${error}`
-      );
-      return false;
-    }
-  }
-
-  /**
-   * 检查页面上的播放器指示器
-   */
-  private async checkPlayerIndicators(page: Page): Promise<boolean> {
-    try {
-      // 检查是否有播放相关的JavaScript变量或元素
-      const hasPlayerIndicators = await page.evaluate(() => {
-        // 检查全局变量
-        if (typeof (window as any).player_aaaa !== "undefined") {
-          return true;
-        }
-
-        // 检查是否有播放链接
-        const playLink = document.querySelector("#bfurl");
-        if (playLink && playLink.getAttribute("href")) {
-          return true;
-        }
-
-        // 检查是否有播放器相关的脚本
-        const scripts = Array.from(document.querySelectorAll("script"));
-        for (const script of scripts) {
-          if (
-            script.src &&
-            (script.src.includes("player") || script.src.includes("dplayer"))
-          ) {
-            return true;
+        // 监听videojs发送的消息日志（备用方案）
+        if (text.includes("[videojs] 已发送消息给父页面:")) {
+          try {
+            const messageMatch = text.match(/\{.*\}/);
+            if (messageMatch) {
+              const messageData = JSON.parse(messageMatch[0]);
+              if (messageData.isPlayable) {
+                logger.log(
+                  "[ShenQiZheValidator] 从postMessage检测到视频可播放"
+                );
+                resolveOnce(true);
+              }
+            }
+          } catch (error) {
+            // 忽略解析错误
           }
         }
 
-        return false;
+        // 监听VIDEO_STATUS_RESULT格式的消息（备用方案）
+        if (text.startsWith("VIDEO_STATUS_RESULT:")) {
+          try {
+            const data = JSON.parse(text.replace("VIDEO_STATUS_RESULT:", ""));
+            if (data.isPlayable) {
+              logger.log(
+                "[ShenQiZheValidator] 从VIDEO_STATUS消息检测到视频可播放"
+              );
+              resolveOnce(true);
+            }
+          } catch (error) {
+            // 忽略解析错误
+          }
+        }
+      };
+
+      page.on("console", consoleListener);
+
+      // 注入消息监听器到页面（作为备用）
+      page.addInitScript(() => {
+        console.log("[ShenQiZheValidator] 初始化消息监听器");
+
+        window.addEventListener("message", (event) => {
+          console.log("[ShenQiZheValidator] 收到postMessage:", event.data);
+
+          if (event.data && event.data.type === "VIDEO_STATUS") {
+            console.log("[ShenQiZheValidator] 收到视频状态消息:", event.data);
+            // 将消息发送到控制台，这样我们可以在Node.js端捕获
+            console.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
+          }
+        });
+
+        // 定期检查是否有iframe并尝试通信
+        setInterval(() => {
+          const iframe = document.querySelector(
+            "#playleft iframe"
+          ) as HTMLIFrameElement;
+          if (iframe && iframe.contentWindow) {
+            console.log("[ShenQiZheValidator] 检测到iframe，尝试通信");
+          }
+        }, 2000);
       });
-
-      if (hasPlayerIndicators) {
-        logger.log("[ShenQiZheValidator] Found player indicators on page");
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      logger.log(
-        `[ShenQiZheValidator] Error checking player indicators: ${error}`
-      );
-      return false;
-    }
+    });
   }
 }

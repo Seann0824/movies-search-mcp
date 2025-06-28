@@ -23,10 +23,8 @@ export class ImtlinkValidatorService {
     }
 
     const browser = await chromium.launch({
-      headless: false, // 启用有头模式以便调试
-      devtools: true, // 自动打开开发者工具
+      headless: true, // 启用有头模式以便调试
       channel: "chrome", // 使用系统的Chrome浏览器
-      slowMo: 1000, // 减慢操作速度以便观察
     });
 
     try {

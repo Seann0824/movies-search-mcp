@@ -11,7 +11,10 @@ export class ImtlinkSource extends BaseSource {
   name = "Imtlink";
 
   async find(query: SearchQuery): Promise<SearchResult[]> {
-    const browser = await chromium.launch({ headless: false });
+    const browser = await chromium.launch({
+      headless: true,
+      channel: "chrome",
+    });
     try {
       const context = await browser.newContext({
         userAgent:

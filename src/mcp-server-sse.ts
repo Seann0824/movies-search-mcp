@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 
 import express from "express";
-import { randomUUID } from "node:crypto";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { z } from "zod";
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";
 import { GazeValidatorService } from "./core/gaze.validator";
-import { SearchQuery, SearchResult } from "./types/index";
+import { SearchQuery } from "./types/index";
 
 dotenv.config();
 

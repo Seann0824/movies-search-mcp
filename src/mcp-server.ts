@@ -5,7 +5,6 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
-  CallToolRequest,
 } from "@modelcontextprotocol/sdk/types.js";
 import dotenv from "dotenv";
 import { GazeSource } from "./sources/Gaze.source";

@@ -53,7 +53,7 @@ export class ShenQiZheValidatorService {
       // 读取本地的videojs.html检测脚本
       const fakeDetectorPath = path.join(
         __dirname,
-        "../../src/sdk-fake/shenqizhan/videojs.html"
+        "../sdk-fake/shenqizhan/videojs.html"
       );
 
       let fakeDetectorScript;
@@ -251,6 +251,19 @@ export class ShenQiZheValidatorService {
             }
           }
         } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage.includes(
+              "Target page, context or browser has been closed"
+            ) ||
+            errorMessage.includes("Page closed") ||
+            errorMessage.includes("cdpSession.send")
+          ) {
+            logger.log("[ShenQiZheValidator] 页面已关闭，停止监听");
+            resolveOnce(false);
+            return;
+          }
           logger.error("[ShenQiZheValidator] 处理控制台消息时出错:", error);
         }
       };

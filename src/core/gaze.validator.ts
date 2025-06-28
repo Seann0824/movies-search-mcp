@@ -71,7 +71,7 @@ export class GazeValidatorService {
       // Read the local fake detector script
       const fakeDetectorPath = path.join(
         __dirname,
-        "../../src/sdk-fake/gaze/devtools-detector.min.js"
+        "../sdk-fake/gaze/devtools-detector.min.js"
       );
 
       let fakeDetectorScript;
@@ -258,7 +258,9 @@ export class GazeValidatorService {
           if (
             errorMessage.includes(
               "Target page, context or browser has been closed"
-            )
+            ) ||
+            errorMessage.includes("Page closed") ||
+            errorMessage.includes("cdpSession.send")
           ) {
             logger.log(
               "[GazeValidator] Page closed during validation, stopping"

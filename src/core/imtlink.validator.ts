@@ -53,7 +53,7 @@ export class ImtlinkValidatorService {
       // Read the local fake detector script
       const fakeDetectorPath = path.join(
         __dirname,
-        "../../src/sdk-fake/imlink/dplayer.html"
+        "../sdk-fake/imlink/dplayer.html"
       );
 
       let fakeDetectorScript;
@@ -224,6 +224,19 @@ export class ImtlinkValidatorService {
             }
           }
         } catch (error) {
+          const errorMessage =
+            error instanceof Error ? error.message : String(error);
+          if (
+            errorMessage.includes(
+              "Target page, context or browser has been closed"
+            ) ||
+            errorMessage.includes("Page closed") ||
+            errorMessage.includes("cdpSession.send")
+          ) {
+            logger.log("[ImtlinkValidator] 页面已关闭，停止监听");
+            resolveOnce(false);
+            return;
+          }
           logger.error("[ImtlinkValidator] 处理控制台消息时出错:", error);
         }
       };
@@ -233,15 +246,15 @@ export class ImtlinkValidatorService {
       // 方法2：注入消息监听器到页面（作为备用）
       page
         .addInitScript(() => {
-          logger.log("[ImtlinkValidator] 初始化消息监听器");
+          console.log("[ImtlinkValidator] 初始化消息监听器");
 
           window.addEventListener("message", (event) => {
-            logger.log("[ImtlinkValidator] 收到postMessage:", event.data);
+            console.log("[ImtlinkValidator] 收到postMessage:", event.data);
 
             if (event.data && event.data.type === "VIDEO_STATUS") {
-              logger.log("[ImtlinkValidator] 收到视频状态消息:", event.data);
+              console.log("[ImtlinkValidator] 收到视频状态消息:", event.data);
               // 将消息发送到控制台，这样我们可以在Node.js端捕获
-              logger.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
+              console.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
             }
           });
 
@@ -252,10 +265,10 @@ export class ImtlinkValidatorService {
                 "#playleft iframe"
               ) as HTMLIFrameElement;
               if (iframe && iframe.contentWindow) {
-                logger.log("[ImtlinkValidator] 检测到iframe，尝试通信");
+                console.log("[ImtlinkValidator] 检测到iframe，尝试通信");
               }
             } catch (error) {
-              logger.log("[ImtlinkValidator] 检查iframe时出错:", error);
+              console.log("[ImtlinkValidator] 检查iframe时出错:", error);
               clearInterval(checkInterval);
             }
           }, 2000);

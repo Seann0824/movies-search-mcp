@@ -105,7 +105,7 @@ PORT=3001 movies-search-mcp --sse
 
 ```bash
 # 克隆项目
-git clone https://github.com/Seann0824/movies-search-mcp.git
+git clone https://github.com/seanwangjs/movies-search-mcp.git
 cd movies-search-mcp
 
 # 安装依赖
@@ -155,7 +155,7 @@ MIT License
 
 如果你遇到任何问题，请：
 
-1. 查看 [Issues](https://github.com/Seann0824/movies-search-mcp/issues)
+1. 查看 [Issues](https://github.com/seanwangjs/movies-search-mcp/issues)
 2. 创建新的 Issue
 3. 联系作者: seanwangjs@example.com
 

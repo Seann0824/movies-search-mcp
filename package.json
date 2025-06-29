@@ -1,6 +1,6 @@
 {
   "name": "@acwink/movies-search-mcp",
-  "version": "1.0.14",
+  "version": "1.0.15",
   "description": "Smart MCP tool to find and validate movie/tv-show resources with multiple sources support",
   "main": "dist/cli.js",
   "bin": {

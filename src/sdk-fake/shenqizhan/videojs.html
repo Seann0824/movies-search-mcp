@@ -10,6 +10,97 @@
       name="viewport"
     />
     <link rel="stylesheet" href="./videojs/video-js.min.css" />
+    <script type="text/javascript">
+      (() => {
+        // 使用一个唯一的名称以避免冲突
+        if (window.unifiedVideoValidationPromise) {
+          return;
+        }
+
+        // 在 window 对象上暴露一个 Promise，以便 Playwright 可以等待结果
+        window.unifiedVideoValidationPromise = new Promise(
+          (resolve, reject) => {
+            // 设置一个全局超时，以防万一
+            const globalTimeoutTimer = setTimeout(() => {
+              reject(new Error("Global validation timeout after 15s"));
+            }, 15000);
+
+            const validateVideo = (video) => {
+              // --- 标准化 video 元素属性 ---
+              video.autoplay = true;
+              video.muted = true;
+              video.preload = "auto";
+              video.setAttribute("playsinline", "");
+              // -----------------------------------------
+
+              new Promise((videoResolve, videoReject) => {
+                if (video.error) {
+                  return videoReject();
+                }
+                if (video.readyState >= 3) {
+                  // HAVE_FUTURE_DATA
+                  return videoResolve(video);
+                }
+
+                let timeoutId = null;
+                const cleanup = () => {
+                  clearTimeout(timeoutId);
+                  video.removeEventListener("canplay", onCanPlay);
+                  video.removeEventListener("error", onError);
+                };
+
+                const onCanPlay = () => {
+                  cleanup();
+                  videoResolve(video);
+                };
+
+                const onError = () => {
+                  cleanup();
+                  videoReject();
+                };
+
+                timeoutId = setTimeout(() => {
+                  cleanup();
+                  videoReject();
+                }, 10000);
+
+                video.addEventListener("canplay", onCanPlay);
+                video.addEventListener("error", onError);
+
+                video.load();
+              })
+                .then((validVideo) => {
+                  console.log("[validateVideoPlayability] success");
+                  clearTimeout(globalTimeoutTimer);
+                  resolve(true); // 解析主 Promise，表示成功
+                })
+                .catch((err) => {
+                  console.log("[validateVideoPlayability] failed");
+                });
+            };
+
+            const observer = new MutationObserver((mutationsList) => {
+              for (const mutation of mutationsList) {
+                if (mutation.type === "childList") {
+                  mutation.addedNodes.forEach((node) => {
+                    if (node.nodeName === "VIDEO") {
+                      validateVideo(node);
+                    } else if (typeof node.querySelectorAll === "function") {
+                      node.querySelectorAll("video").forEach(validateVideo);
+                    }
+                  });
+                }
+              }
+            });
+
+            observer.observe(document, {
+              childList: true,
+              subtree: true,
+            });
+          }
+        );
+      })();
+    </script>
     <script type="text/javascript" src="./videojs/video.min.js"></script>
     <script
       type="text/javascript"
@@ -142,248 +233,5 @@
     </div>
     <div id="stats">警告：请不要相信视频中任何广告与字幕！</div>
     <script type="text/javascript" src="./videojs/setting.js"></script>
-    <script type="text/javascript">
-      console.log("Video.js通用播放器检测脚本已加载");
-
-      // 尝试点击播放按钮
-      function tryClickPlayButton() {
-        const playButtonSelectors = [
-          ".vjs-big-play-button", // Video.js大播放按钮
-          "button.vjs-big-play-button", // 指定button标签的播放按钮
-          ".video-js .vjs-big-play-button", // Video.js容器内的播放按钮
-          ".vjs-play-control", // 控制栏播放按钮
-          "[title='Play Video']", // 带有Play Video标题的按钮
-          "[aria-label*='play']", // 包含play的aria-label
-        ];
-
-        for (const selector of playButtonSelectors) {
-          const playButton = document.querySelector(selector);
-          if (playButton && !playButton._clicked) {
-            console.log(`[VideoJS] 找到播放按钮: ${selector}`);
-            try {
-              playButton.click();
-              playButton._clicked = true; // 标记已点击，避免重复点击
-              console.log("[VideoJS] 已点击播放按钮");
-              return true;
-            } catch (error) {
-              console.log("[VideoJS] 点击播放按钮失败:", error);
-            }
-          }
-        }
-        return false;
-      }
-
-      // 通用视频检测脚本
-      function checkVideoPlayability() {
-        console.log("[VideoJS] 开始检测视频元素...");
-
-        // 先尝试点击播放按钮
-        tryClickPlayButton();
-
-        // 通用video元素选择器 - 适用于各种Video.js实现
-        const videoSelectors = [
-          "#video_html5_api", // Video.js常用的HTML5 API元素
-          "#video", // 基础video元素
-          ".video-js video", // Video.js播放器内的video元素
-          ".vjs-tech", // Video.js技术层元素
-          "video[data-vjs-player]", // 带有Video.js标记的video元素
-          "video", // 通用video元素
-        ];
-
-        let video = null;
-        for (const selector of videoSelectors) {
-          video = document.querySelector(selector);
-          if (video && video.tagName === "VIDEO") {
-            console.log(`[VideoJS] 找到视频元素: ${selector}`);
-            break;
-          }
-        }
-
-        if (!video) {
-          console.log("[VideoJS] 未找到视频元素");
-          return false;
-        }
-
-        // 检查视频状态
-        const videoInfo = {
-          src: video.src,
-          currentSrc: video.currentSrc,
-          readyState: video.readyState,
-          networkState: video.networkState,
-          duration: video.duration,
-          paused: video.paused,
-          ended: video.ended,
-          error: video.error,
-        };
-
-        console.log("[VideoJS] 视频信息:", videoInfo);
-
-        // 判断视频是否可播放 - 通用检测逻辑
-        const isPlayable =
-          (video.src || video.currentSrc) && // 有视频源
-          video.readyState >= 1 && // HAVE_METADATA 或更高
-          !video.error && // 没有错误
-          video.duration > 0 && // 有有效时长
-          !isNaN(video.duration); // 时长不是NaN
-
-        console.log(`[VideoJS] 视频可播放性: ${isPlayable}`);
-
-        // 发送消息给父页面
-        const message = {
-          type: "VIDEO_STATUS",
-          isPlayable: isPlayable,
-          videoInfo: videoInfo,
-          timestamp: Date.now(),
-        };
-
-        try {
-          window.parent.postMessage(message, "*");
-          console.log("[VideoJS] 已发送消息给父页面:", message);
-        } catch (error) {
-          console.error("[VideoJS] 发送消息失败:", error);
-        }
-
-        return isPlayable;
-      }
-
-      // 监听video元素的各种事件
-      function setupVideoListeners(video) {
-        const events = [
-          "loadstart",
-          "loadedmetadata",
-          "loadeddata",
-          "canplay",
-          "canplaythrough",
-          "error",
-        ];
-
-        events.forEach((eventName) => {
-          video.addEventListener(eventName, () => {
-            console.log(`[VideoJS] 视频事件: ${eventName}`);
-            checkVideoPlayability();
-          });
-        });
-      }
-
-      // 使用 MutationObserver 监听DOM变化，检测动态创建的video元素
-      const observer = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-          mutation.addedNodes.forEach((node) => {
-            if (node.nodeType === 1) {
-              // Element node
-
-              // 检查是否是播放按钮
-              if (
-                node.classList &&
-                (node.classList.contains("vjs-big-play-button") ||
-                  (node.matches &&
-                    node.matches(
-                      ".vjs-big-play-button, button.vjs-big-play-button"
-                    )))
-              ) {
-                console.log("[VideoJS] 检测到新的播放按钮");
-                setTimeout(() => tryClickPlayButton(), 500);
-              }
-
-              // 检查是否是video元素
-              if (node.tagName === "VIDEO") {
-                console.log("[VideoJS] 检测到新的video元素");
-                setupVideoListeners(node);
-                // 延迟检查，给视频时间加载
-                setTimeout(() => {
-                  tryClickPlayButton();
-                  checkVideoPlayability();
-                }, 1000);
-              }
-
-              // 检查子元素中是否有video
-              const videos = node.querySelectorAll
-                ? node.querySelectorAll("video")
-                : [];
-              videos.forEach((video) => {
-                console.log("[VideoJS] 检测到子video元素");
-                setupVideoListeners(video);
-                setTimeout(() => {
-                  tryClickPlayButton();
-                  checkVideoPlayability();
-                }, 1000);
-              });
-
-              // 检查子元素中是否有播放按钮
-              if (node.querySelector) {
-                const playButtons = node.querySelectorAll(
-                  ".vjs-big-play-button, button.vjs-big-play-button"
-                );
-                if (playButtons.length > 0) {
-                  console.log("[VideoJS] 检测到子播放按钮");
-                  setTimeout(() => tryClickPlayButton(), 500);
-                }
-
-                // 检查是否包含Video.js相关元素
-                const videoJsElements = node.querySelectorAll(
-                  "#video_html5_api, .vjs-tech, video[data-vjs-player]"
-                );
-                videoJsElements.forEach((element) => {
-                  if (element.tagName === "VIDEO") {
-                    console.log("[VideoJS] 检测到Video.js相关video元素");
-                    setupVideoListeners(element);
-                    setTimeout(() => {
-                      tryClickPlayButton();
-                      checkVideoPlayability();
-                    }, 1000);
-                  }
-                });
-              }
-            }
-          });
-        });
-      });
-
-      // 开始观察DOM变化
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-      });
-
-      // 页面加载完成后也检查一次
-      document.addEventListener("DOMContentLoaded", () => {
-        console.log("[VideoJS] DOM加载完成，检查现有video元素和播放按钮");
-        setTimeout(() => {
-          tryClickPlayButton();
-          checkVideoPlayability();
-        }, 2000);
-      });
-
-      // 如果DOM已经加载完成
-      if (document.readyState === "loading") {
-        document.addEventListener("DOMContentLoaded", () => {
-          setTimeout(() => {
-            tryClickPlayButton();
-            checkVideoPlayability();
-          }, 2000);
-        });
-      } else {
-        setTimeout(() => {
-          tryClickPlayButton();
-          checkVideoPlayability();
-        }, 2000);
-      }
-
-      // 定期检查（作为备用）
-      setInterval(() => {
-        // 先尝试点击播放按钮
-        tryClickPlayButton();
-
-        const video =
-          document.querySelector("#video_html5_api") ||
-          document.querySelector("#video");
-        if (video && !video._listenerSetup) {
-          console.log("[VideoJS] 定期检查发现新video元素");
-          setupVideoListeners(video);
-          video._listenerSetup = true;
-          checkVideoPlayability();
-        }
-      }, 3000);
-    </script>
   </body>
 </html>

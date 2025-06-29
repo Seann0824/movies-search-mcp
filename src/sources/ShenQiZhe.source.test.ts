@@ -25,6 +25,20 @@ describe("ShenQiZheSource Integration Test", () => {
     lastTestTime = Date.now();
   });
 
+  it("should successfully validate the specific video URL 'https://www.shenqizhe.com/vodplay/164548-1-1.html'", async () => {
+    const isValid = await shenQiZheValidator.isValid(
+      "https://www.shenqizhe.com/vodplay/164548-1-1.html"
+    );
+    expect(isValid).toBe(true);
+  });
+
+  it("should fail to validate the specific video URL 'https://www.shenqizhe.com/vodplay/107172-1-1.html'", async () => {
+    const isValid = await shenQiZheValidator.isValid(
+      "https://www.shenqizhe.com/vodplay/107172-1-1.html"
+    );
+    expect(isValid).toBe(false);
+  });
+
   it("should search and parse movie results correctly", async () => {
     const query: SearchQuery = {
       title: "小黄人",
@@ -54,7 +68,7 @@ describe("ShenQiZheSource Integration Test", () => {
     console.log(
       `[Test] 第一个结果: ${firstResult.title} - ${firstResult.quality}`
     );
-  }, 30000); // 30秒超时
+  }); // 30秒超时
 
   it("should handle search with no results gracefully", async () => {
     const query: SearchQuery = {
@@ -70,7 +84,7 @@ describe("ShenQiZheSource Integration Test", () => {
     expect(results).toBeInstanceOf(Array);
     // 可能返回空数组或者少量结果
     expect(results.length).toBeGreaterThanOrEqual(0);
-  }, 30000); // 30秒超时
+  }); // 30秒超时
 
   it("should find and validate playable video results", async () => {
     const query: SearchQuery = {
@@ -135,5 +149,5 @@ describe("ShenQiZheSource Integration Test", () => {
     console.log(
       `[Test] 🎉 视频验证测试通过！找到 ${validatedResults.length} 个可播放的视频资源`
     );
-  }, 120000); // 120秒超时，因为需要验证多个视频
+  }); // 120秒超时，因为需要验证多个视频
 });

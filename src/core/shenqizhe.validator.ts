@@ -40,6 +40,7 @@ export class ShenQiZheValidatorService {
           "--no-zygote",
           "--single-process", // 使用单进程模式，减少资源竞争
           "--disable-gpu",
+          "--autoplay-policy=no-user-gesture-required",
         ],
       });
 
@@ -50,6 +51,12 @@ export class ShenQiZheValidatorService {
 
       page = await context.newPage();
 
+      // 注入脚本以禁用console.clear
+      await page.addInitScript(() => {
+        console.clear = () =>
+          console.log("[Validator] console.clear() is disabled.");
+      });
+
       // 读取两种播放器的检测脚本
       const videojsDetectorPath = path.join(
         __dirname,
@@ -57,10 +64,11 @@ export class ShenQiZheValidatorService {
       );
       const dplayerDetectorPath = path.join(
         __dirname,
-        "../sdk-fake/imlink/dplayer.html"
+        "../sdk-fake/shenqizhan/dplayer.html"
       );
 
-      let videojsDetectorScript, dplayerDetectorScript;
+      let videojsDetectorScript;
+      let dplayerDetectorScript;
       try {
         videojsDetectorScript = fs.readFileSync(videojsDetectorPath, "utf-8");
         dplayerDetectorScript = fs.readFileSync(dplayerDetectorPath, "utf-8");
@@ -68,12 +76,6 @@ export class ShenQiZheValidatorService {
         logger.error(`[ShenQiZheValidator] 无法读取检测脚本文件:`, fileError);
         return false;
       }
-
-      // 调试信息
-      logger.debug("本地 videojs.html 文件路径:", videojsDetectorPath);
-      logger.debug("本地 dplayer.html 文件路径:", dplayerDetectorPath);
-      logger.debug("VideoJS脚本长度:", videojsDetectorScript.length);
-      logger.debug("DPlayer脚本长度:", dplayerDetectorScript.length);
 
       // 拦截Video.js播放器脚本
       await page.route("**/videojs.html", (route) => {
@@ -97,38 +99,6 @@ export class ShenQiZheValidatorService {
             contentType: "text/html; charset=utf-8",
             body: dplayerDetectorScript,
           });
-        } catch (error) {
-          logger.error(`[ShenQiZheValidator] 路由处理错误:`, error);
-          route.continue();
-        }
-      });
-
-      // 拦截通用播放器路径
-      await page.route("**/static/player/**", (route) => {
-        try {
-          const url = route.request().url();
-          if (url.includes("videojs.html") || url.includes("video.js")) {
-            route.fulfill({
-              status: 200,
-              contentType: "text/html; charset=utf-8",
-              body: videojsDetectorScript,
-            });
-          } else if (url.includes("dplayer.html") || url.includes("dplayer")) {
-            route.fulfill({
-              status: 200,
-              contentType: "text/html; charset=utf-8",
-              body: dplayerDetectorScript,
-            });
-          } else if (url.includes("player.html")) {
-            // 默认使用VideoJS脚本
-            route.fulfill({
-              status: 200,
-              contentType: "text/html; charset=utf-8",
-              body: videojsDetectorScript,
-            });
-          } else {
-            route.continue();
-          }
         } catch (error) {
           logger.error(`[ShenQiZheValidator] 路由处理错误:`, error);
           route.continue();
@@ -165,7 +135,7 @@ export class ShenQiZheValidatorService {
       // 确保资源正确清理
       try {
         if (page && !page.isClosed()) {
-          await page.close();
+          // await page.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭页面时出错:`, error);
@@ -173,7 +143,7 @@ export class ShenQiZheValidatorService {
 
       try {
         if (context) {
-          await context.close();
+          // await context.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭上下文时出错:`, error);
@@ -181,7 +151,7 @@ export class ShenQiZheValidatorService {
 
       try {
         if (browser) {
-          await browser.close();
+          // await browser.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭浏览器时出错:`, error);
@@ -195,15 +165,11 @@ export class ShenQiZheValidatorService {
   private waitForVideoStatusMessage(page: Page): Promise<boolean> {
     return new Promise((resolve) => {
       let isResolved = false;
-      let messageListener: any;
       let consoleListener: any;
       let timeout: NodeJS.Timeout;
 
       const cleanup = () => {
         if (timeout) clearTimeout(timeout);
-        if (messageListener) {
-          page.removeListener("console", messageListener);
-        }
         if (consoleListener) {
           page.removeListener("console", consoleListener);
         }
@@ -219,13 +185,11 @@ export class ShenQiZheValidatorService {
 
       // 15秒超时
       timeout = setTimeout(() => {
-        logger.log(
-          "[ShenQiZheValidator] 15秒内未收到可播放的视频状态消息，验证失败"
-        );
+        logger.log("[ShenQiZheValidator] 15秒内未收到验证日志，验证失败");
         resolveOnce(false);
       }, 15000);
 
-      // 监听控制台消息，捕获iframe内的视频状态
+      // 监听控制台消息，捕获iframe内的验证结果
       consoleListener = (msg: any) => {
         // 检查页面是否已关闭
         if (page.isClosed()) {
@@ -237,76 +201,16 @@ export class ShenQiZheValidatorService {
         try {
           const text = msg.text();
 
-          // 监听VideoJS播放器的视频可播放性日志
-          if (text.includes("[VideoJS] 视频可播放性: true")) {
-            logger.log(
-              "[ShenQiZheValidator] 检测到VideoJS视频可播放，验证成功"
-            );
+          if (text.includes("[validateVideoPlayability] success")) {
+            logger.log("[ShenQiZheValidator] 收到 'success' 日志，验证成功");
             resolveOnce(true);
             return;
           }
 
-          // 监听DPlayer播放器的视频可播放性日志
-          if (text.includes("[DPlayer] 视频可播放性: true")) {
-            logger.log(
-              "[ShenQiZheValidator] 检测到DPlayer视频可播放，验证成功"
-            );
-            resolveOnce(true);
+          if (text.includes("[validateVideoPlayability] failed")) {
+            logger.log("[ShenQiZheValidator] 收到 'failed' 日志，验证失败");
+            resolveOnce(false);
             return;
-          }
-
-          // 监听VideoJS发送的消息日志（备用方案）
-          if (text.includes("[VideoJS] 已发送消息给父页面:")) {
-            try {
-              const messageMatch = text.match(/\{.*\}/);
-              if (messageMatch) {
-                const messageData = JSON.parse(messageMatch[0]);
-                if (messageData.isPlayable) {
-                  logger.log(
-                    "[ShenQiZheValidator] 从VideoJS postMessage检测到视频可播放"
-                  );
-                  resolveOnce(true);
-                  return;
-                }
-              }
-            } catch (error) {
-              // 忽略解析错误
-            }
-          }
-
-          // 监听DPlayer发送的消息日志（备用方案）
-          if (text.includes("[DPlayer] 已发送消息给父页面:")) {
-            try {
-              const messageMatch = text.match(/\{.*\}/);
-              if (messageMatch) {
-                const messageData = JSON.parse(messageMatch[0]);
-                if (messageData.isPlayable) {
-                  logger.log(
-                    "[ShenQiZheValidator] 从DPlayer postMessage检测到视频可播放"
-                  );
-                  resolveOnce(true);
-                  return;
-                }
-              }
-            } catch (error) {
-              // 忽略解析错误
-            }
-          }
-
-          // 监听VIDEO_STATUS_RESULT格式的消息（备用方案）
-          if (text.startsWith("VIDEO_STATUS_RESULT:")) {
-            try {
-              const data = JSON.parse(text.replace("VIDEO_STATUS_RESULT:", ""));
-              if (data.isPlayable) {
-                logger.log(
-                  "[ShenQiZheValidator] 从VIDEO_STATUS消息检测到视频可播放"
-                );
-                resolveOnce(true);
-                return;
-              }
-            } catch (error) {
-              // 忽略解析错误
-            }
           }
         } catch (error) {
           const errorMessage =
@@ -327,46 +231,6 @@ export class ShenQiZheValidatorService {
       };
 
       page.on("console", consoleListener);
-
-      // 注入消息监听器到页面（作为备用）
-      page
-        .addInitScript(() => {
-          console.log("[ShenQiZheValidator] 初始化消息监听器");
-
-          window.addEventListener("message", (event) => {
-            console.log("[ShenQiZheValidator] 收到postMessage:", event.data);
-
-            if (event.data && event.data.type === "VIDEO_STATUS") {
-              console.log("[ShenQiZheValidator] 收到视频状态消息:", event.data);
-              // 将消息发送到控制台，这样我们可以在Node.js端捕获
-              console.log("VIDEO_STATUS_RESULT:" + JSON.stringify(event.data));
-            }
-          });
-
-          // 定期检查是否有iframe并尝试通信
-          const checkInterval = setInterval(() => {
-            try {
-              const iframe = document.querySelector(
-                "#playleft iframe"
-              ) as HTMLIFrameElement;
-              if (iframe && iframe.contentWindow) {
-                console.log("[ShenQiZheValidator] 检测到iframe，尝试通信");
-              }
-            } catch (error) {
-              console.log("[ShenQiZheValidator] 检查iframe时出错:", error);
-              clearInterval(checkInterval);
-            }
-          }, 2000);
-
-          // 15秒后清理定时器
-          setTimeout(() => {
-            clearInterval(checkInterval);
-          }, 15000);
-        })
-        .catch((error) => {
-          logger.error("[ShenQiZheValidator] 注入脚本时出错:", error);
-          resolveOnce(false);
-        });
     });
   }
 }

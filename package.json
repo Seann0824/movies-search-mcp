@@ -1,6 +1,6 @@
 {
   "name": "@acwink/movies-search-mcp",
-  "version": "1.0.12",
+  "version": "1.0.13",
   "description": "Smart MCP tool to find and validate movie/tv-show resources with multiple sources support",
   "main": "dist/cli.js",
   "bin": {
@@ -12,6 +12,7 @@
     "LICENSE"
   ],
   "scripts": {
+    "postinstall": "playwright install --with-deps chrome",
     "start": "node dist/server.js",
     "mcp": "node dist/mcp-server.js",
     "mcp:sse": "node dist/mcp-server-sse.js",

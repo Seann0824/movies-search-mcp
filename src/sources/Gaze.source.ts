@@ -27,7 +27,10 @@ export class GazeSource extends BaseSource {
   name = "Gaze";
 
   async find(query: SearchQuery): Promise<SearchResult[]> {
-    const browser = await chromium.launch({ headless: true });
+    const browser = await chromium.launch({
+      headless: true,
+      channel: "chrome",
+    });
     try {
       const context = await browser.newContext({
         // 伪装成真实的浏览器

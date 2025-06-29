@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>dplayer播放器</title>
+    <title>DPlayer通用播放器检测</title>
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
     <meta http-equiv="X-UA-Compatible" content="IE=11" />
     <meta
@@ -49,21 +49,32 @@
     <div id="stats">警告：请不要相信视频中任何广告与字幕！</div>
     <script type="text/javascript" src="./dplayer/setting.js"></script>
     <script type="text/javascript">
-      console.log("dplayer.html loaded");
+      console.log("DPlayer通用播放器检测脚本已加载");
 
-      // 视频检测脚本
+      // 通用DPlayer视频检测脚本
       function checkVideoPlayability() {
-        console.log("[dplayer] 开始检测视频元素...");
+        console.log("[DPlayer] 开始检测视频元素...");
 
-        // 查找video元素
+        // 通用DPlayer video元素选择器
         const videoSelectors = [
-          "#playerCnt > div.dplayer-video-wrap > video", // 用户提供的精确选择器
+          ".dplayer-video-wrap > video", // DPlayer标准结构
+          "#playerCnt > div.dplayer-video-wrap > video", // 带容器的DPlayer
+          ".dplayer-video video", // DPlayer视频容器内的video
+          ".dplayer video", // DPlayer内的任意video
+          "video", // 通用video元素
         ];
 
-        const video = document.querySelector(videoSelectors[0]);
+        let video = null;
+        for (const selector of videoSelectors) {
+          video = document.querySelector(selector);
+          if (video && video.tagName === "VIDEO") {
+            console.log(`[DPlayer] 找到视频元素: ${selector}`);
+            break;
+          }
+        }
 
         if (!video) {
-          console.log("[dplayer] 未找到视频元素");
+          console.log("[DPlayer] 未找到视频元素");
           return false;
         }
 
@@ -79,19 +90,17 @@
           error: video.error,
         };
 
-        console.log("[dplayer] 视频信息:", videoInfo);
+        console.log("[DPlayer] 视频信息:", videoInfo);
 
-        // 判断视频是否可播放
+        // 判断视频是否可播放 - 通用检测逻辑
         const isPlayable =
-          ((video.src || video.currentSrc) && // 有视频源
-            video.readyState >= 1 && // HAVE_METADATA 或更高
-            !video.error && // 没有错误
-            video.duration > 0) || // 有有效时长
-          // 或者至少有blob源（即使readyState还没准备好）
-          (video.src && video.src.startsWith("blob:")) ||
-          (video.currentSrc && video.currentSrc.startsWith("blob:"));
+          (video.src || video.currentSrc) && // 有视频源
+          video.readyState >= 1 && // HAVE_METADATA 或更高
+          !video.error && // 没有错误
+          video.duration > 0 && // 有有效时长
+          !isNaN(video.duration); // 时长不是NaN
 
-        console.log(`[dplayer] 视频可播放性: ${isPlayable}`);
+        console.log(`[DPlayer] 视频可播放性: ${isPlayable}`);
 
         // 发送消息给父页面
         const message = {
@@ -103,9 +112,9 @@
 
         try {
           window.parent.postMessage(message, "*");
-          console.log("[dplayer] 已发送消息给父页面:", message);
+          console.log("[DPlayer] 已发送消息给父页面:", message);
         } catch (error) {
-          console.error("[dplayer] 发送消息失败:", error);
+          console.error("[DPlayer] 发送消息失败:", error);
         }
 
         return isPlayable;
@@ -124,7 +133,7 @@
 
         events.forEach((eventName) => {
           video.addEventListener(eventName, () => {
-            console.log(`[dplayer] 视频事件: ${eventName}`);
+            console.log(`[DPlayer] 视频事件: ${eventName}`);
             checkVideoPlayability();
           });
         });
@@ -138,7 +147,7 @@
               // Element node
               // 检查是否是video元素
               if (node.tagName === "VIDEO") {
-                console.log("[dplayer] 检测到新的video元素");
+                console.log("[DPlayer] 检测到新的video元素");
                 setupVideoListeners(node);
                 // 延迟检查，给视频时间加载
                 setTimeout(() => checkVideoPlayability(), 1000);
@@ -149,10 +158,22 @@
                 ? node.querySelectorAll("video")
                 : [];
               videos.forEach((video) => {
-                console.log("[dplayer] 检测到子video元素");
+                console.log("[DPlayer] 检测到子video元素");
                 setupVideoListeners(video);
                 setTimeout(() => checkVideoPlayability(), 1000);
               });
+
+              // 检查是否包含DPlayer相关元素
+              if (node.querySelector) {
+                const dplayerElements = node.querySelectorAll(
+                  ".dplayer-video-wrap video, .dplayer-video video, .dplayer video"
+                );
+                dplayerElements.forEach((video) => {
+                  console.log("[DPlayer] 检测到DPlayer相关video元素");
+                  setupVideoListeners(video);
+                  setTimeout(() => checkVideoPlayability(), 1000);
+                });
+              }
             }
           });
         });
@@ -166,7 +187,7 @@
 
       // 页面加载完成后也检查一次
       document.addEventListener("DOMContentLoaded", () => {
-        console.log("[dplayer] DOM加载完成，检查现有video元素");
+        console.log("[DPlayer] DOM加载完成，检查现有video元素");
         setTimeout(() => checkVideoPlayability(), 2000);
       });
 
@@ -183,7 +204,7 @@
       setInterval(() => {
         const video = document.querySelector("video");
         if (video && !video._listenerSetup) {
-          console.log("[dplayer] 定期检查发现新video元素");
+          console.log("[DPlayer] 定期检查发现新video元素");
           setupVideoListeners(video);
           video._listenerSetup = true;
           checkVideoPlayability();

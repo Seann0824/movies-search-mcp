@@ -50,40 +50,87 @@ export class ImtlinkValidatorService {
 
       page = await context.newPage();
 
-      // Read the local fake detector script
-      const fakeDetectorPath = path.join(
+      // 读取两种播放器的检测脚本
+      const dplayerDetectorPath = path.join(
         __dirname,
         "../sdk-fake/imlink/dplayer.html"
       );
+      const videojsDetectorPath = path.join(
+        __dirname,
+        "../sdk-fake/shenqizhan/videojs.html"
+      );
 
-      let fakeDetectorScript;
+      let dplayerDetectorScript, videojsDetectorScript;
       try {
-        fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
+        dplayerDetectorScript = fs.readFileSync(dplayerDetectorPath, "utf-8");
+        videojsDetectorScript = fs.readFileSync(videojsDetectorPath, "utf-8");
       } catch (fileError) {
-        logger.error(
-          `[ImtlinkValidator] 无法读取检测脚本文件: ${fakeDetectorPath}`
-        );
+        logger.error(`[ImtlinkValidator] 无法读取检测脚本文件:`, fileError);
         return false;
       }
 
-      // 调试断点：检查本地文件内容
-      logger.debug("本地 dplayer.html 文件路径:", fakeDetectorPath);
-      logger.debug("文件内容长度:", fakeDetectorScript.length);
-      logger.debug(
-        "文件内容预览:",
-        fakeDetectorScript.substring(0, 200) + "..."
-      );
+      // 调试信息
+      logger.debug("本地 dplayer.html 文件路径:", dplayerDetectorPath);
+      logger.debug("本地 videojs.html 文件路径:", videojsDetectorPath);
+      logger.debug("DPlayer脚本长度:", dplayerDetectorScript.length);
+      logger.debug("VideoJS脚本长度:", videojsDetectorScript.length);
 
       // 您可以在这里设置断点进行调试
 
-      // Intercept the original detector script and serve the local version instead
+      // 拦截DPlayer播放器脚本
       await page.route("**/dplayer.html", (route) => {
         try {
           route.fulfill({
             status: 200,
             contentType: "text/html; charset=utf-8",
-            body: fakeDetectorScript,
+            body: dplayerDetectorScript,
           });
+        } catch (error) {
+          logger.error(`[ImtlinkValidator] 路由处理错误:`, error);
+          route.continue();
+        }
+      });
+
+      // 拦截Video.js播放器脚本
+      await page.route("**/videojs.html", (route) => {
+        try {
+          route.fulfill({
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            body: videojsDetectorScript,
+          });
+        } catch (error) {
+          logger.error(`[ImtlinkValidator] 路由处理错误:`, error);
+          route.continue();
+        }
+      });
+
+      // 拦截通用播放器路径
+      await page.route("**/static/player/**", (route) => {
+        try {
+          const url = route.request().url();
+          if (url.includes("dplayer.html") || url.includes("dplayer")) {
+            route.fulfill({
+              status: 200,
+              contentType: "text/html; charset=utf-8",
+              body: dplayerDetectorScript,
+            });
+          } else if (url.includes("videojs.html") || url.includes("video.js")) {
+            route.fulfill({
+              status: 200,
+              contentType: "text/html; charset=utf-8",
+              body: videojsDetectorScript,
+            });
+          } else if (url.includes("player.html")) {
+            // 默认使用DPlayer脚本
+            route.fulfill({
+              status: 200,
+              contentType: "text/html; charset=utf-8",
+              body: dplayerDetectorScript,
+            });
+          } else {
+            route.continue();
+          }
         } catch (error) {
           logger.error(`[ImtlinkValidator] 路由处理错误:`, error);
           route.continue();
@@ -182,22 +229,48 @@ export class ImtlinkValidatorService {
         try {
           const text = msg.text();
 
-          // 监听视频可播放性的直接日志
-          if (text.includes("[dplayer] 视频可播放性: true")) {
-            logger.log("[ImtlinkValidator] 检测到视频可播放，验证成功");
+          // 监听DPlayer播放器的视频可播放性日志
+          if (text.includes("[DPlayer] 视频可播放性: true")) {
+            logger.log("[ImtlinkValidator] 检测到DPlayer视频可播放，验证成功");
             resolveOnce(true);
             return;
           }
 
-          // 监听dplayer发送的消息日志（备用方案）
-          if (text.includes("[dplayer] 已发送消息给父页面:")) {
+          // 监听VideoJS播放器的视频可播放性日志
+          if (text.includes("[VideoJS] 视频可播放性: true")) {
+            logger.log("[ImtlinkValidator] 检测到VideoJS视频可播放，验证成功");
+            resolveOnce(true);
+            return;
+          }
+
+          // 监听DPlayer发送的消息日志（备用方案）
+          if (text.includes("[DPlayer] 已发送消息给父页面:")) {
             try {
               const messageMatch = text.match(/\{.*\}/);
               if (messageMatch) {
                 const messageData = JSON.parse(messageMatch[0]);
                 if (messageData.isPlayable) {
                   logger.log(
-                    "[ImtlinkValidator] 从postMessage检测到视频可播放"
+                    "[ImtlinkValidator] 从DPlayer postMessage检测到视频可播放"
+                  );
+                  resolveOnce(true);
+                  return;
+                }
+              }
+            } catch (error) {
+              // 忽略解析错误
+            }
+          }
+
+          // 监听VideoJS发送的消息日志（备用方案）
+          if (text.includes("[VideoJS] 已发送消息给父页面:")) {
+            try {
+              const messageMatch = text.match(/\{.*\}/);
+              if (messageMatch) {
+                const messageData = JSON.parse(messageMatch[0]);
+                if (messageData.isPlayable) {
+                  logger.log(
+                    "[ImtlinkValidator] 从VideoJS postMessage检测到视频可播放"
                   );
                   resolveOnce(true);
                   return;

@@ -50,37 +50,38 @@ export class ShenQiZheValidatorService {
 
       page = await context.newPage();
 
-      // 读取本地的videojs.html检测脚本
-      const fakeDetectorPath = path.join(
+      // 读取两种播放器的检测脚本
+      const videojsDetectorPath = path.join(
         __dirname,
         "../sdk-fake/shenqizhan/videojs.html"
       );
+      const dplayerDetectorPath = path.join(
+        __dirname,
+        "../sdk-fake/imlink/dplayer.html"
+      );
 
-      let fakeDetectorScript;
+      let videojsDetectorScript, dplayerDetectorScript;
       try {
-        fakeDetectorScript = fs.readFileSync(fakeDetectorPath, "utf-8");
+        videojsDetectorScript = fs.readFileSync(videojsDetectorPath, "utf-8");
+        dplayerDetectorScript = fs.readFileSync(dplayerDetectorPath, "utf-8");
       } catch (fileError) {
-        logger.error(
-          `[ShenQiZheValidator] 无法读取检测脚本文件: ${fakeDetectorPath}`
-        );
+        logger.error(`[ShenQiZheValidator] 无法读取检测脚本文件:`, fileError);
         return false;
       }
 
       // 调试信息
-      logger.debug("本地 videojs.html 文件路径:", fakeDetectorPath);
-      logger.debug("文件内容长度:", fakeDetectorScript.length);
-      logger.debug(
-        "文件内容预览:",
-        fakeDetectorScript.substring(0, 200) + "..."
-      );
+      logger.debug("本地 videojs.html 文件路径:", videojsDetectorPath);
+      logger.debug("本地 dplayer.html 文件路径:", dplayerDetectorPath);
+      logger.debug("VideoJS脚本长度:", videojsDetectorScript.length);
+      logger.debug("DPlayer脚本长度:", dplayerDetectorScript.length);
 
-      // 拦截原始播放器脚本，用本地版本替换
+      // 拦截Video.js播放器脚本
       await page.route("**/videojs.html", (route) => {
         try {
           route.fulfill({
             status: 200,
             contentType: "text/html; charset=utf-8",
-            body: fakeDetectorScript,
+            body: videojsDetectorScript,
           });
         } catch (error) {
           logger.error(`[ShenQiZheValidator] 路由处理错误:`, error);
@@ -88,15 +89,42 @@ export class ShenQiZheValidatorService {
         }
       });
 
-      // 拦截可能的其他播放器路径
+      // 拦截DPlayer播放器脚本
+      await page.route("**/dplayer.html", (route) => {
+        try {
+          route.fulfill({
+            status: 200,
+            contentType: "text/html; charset=utf-8",
+            body: dplayerDetectorScript,
+          });
+        } catch (error) {
+          logger.error(`[ShenQiZheValidator] 路由处理错误:`, error);
+          route.continue();
+        }
+      });
+
+      // 拦截通用播放器路径
       await page.route("**/static/player/**", (route) => {
         try {
           const url = route.request().url();
-          if (url.includes("videojs.html") || url.includes("player.html")) {
+          if (url.includes("videojs.html") || url.includes("video.js")) {
             route.fulfill({
               status: 200,
               contentType: "text/html; charset=utf-8",
-              body: fakeDetectorScript,
+              body: videojsDetectorScript,
+            });
+          } else if (url.includes("dplayer.html") || url.includes("dplayer")) {
+            route.fulfill({
+              status: 200,
+              contentType: "text/html; charset=utf-8",
+              body: dplayerDetectorScript,
+            });
+          } else if (url.includes("player.html")) {
+            // 默认使用VideoJS脚本
+            route.fulfill({
+              status: 200,
+              contentType: "text/html; charset=utf-8",
+              body: videojsDetectorScript,
             });
           } else {
             route.continue();
@@ -209,22 +237,52 @@ export class ShenQiZheValidatorService {
         try {
           const text = msg.text();
 
-          // 监听视频可播放性的直接日志
-          if (text.includes("[videojs] 视频可播放性: true")) {
-            logger.log("[ShenQiZheValidator] 检测到视频可播放，验证成功");
+          // 监听VideoJS播放器的视频可播放性日志
+          if (text.includes("[VideoJS] 视频可播放性: true")) {
+            logger.log(
+              "[ShenQiZheValidator] 检测到VideoJS视频可播放，验证成功"
+            );
             resolveOnce(true);
             return;
           }
 
-          // 监听videojs发送的消息日志（备用方案）
-          if (text.includes("[videojs] 已发送消息给父页面:")) {
+          // 监听DPlayer播放器的视频可播放性日志
+          if (text.includes("[DPlayer] 视频可播放性: true")) {
+            logger.log(
+              "[ShenQiZheValidator] 检测到DPlayer视频可播放，验证成功"
+            );
+            resolveOnce(true);
+            return;
+          }
+
+          // 监听VideoJS发送的消息日志（备用方案）
+          if (text.includes("[VideoJS] 已发送消息给父页面:")) {
             try {
               const messageMatch = text.match(/\{.*\}/);
               if (messageMatch) {
                 const messageData = JSON.parse(messageMatch[0]);
                 if (messageData.isPlayable) {
                   logger.log(
-                    "[ShenQiZheValidator] 从postMessage检测到视频可播放"
+                    "[ShenQiZheValidator] 从VideoJS postMessage检测到视频可播放"
+                  );
+                  resolveOnce(true);
+                  return;
+                }
+              }
+            } catch (error) {
+              // 忽略解析错误
+            }
+          }
+
+          // 监听DPlayer发送的消息日志（备用方案）
+          if (text.includes("[DPlayer] 已发送消息给父页面:")) {
+            try {
+              const messageMatch = text.match(/\{.*\}/);
+              if (messageMatch) {
+                const messageData = JSON.parse(messageMatch[0]);
+                if (messageData.isPlayable) {
+                  logger.log(
+                    "[ShenQiZheValidator] 从DPlayer postMessage检测到视频可播放"
                   );
                   resolveOnce(true);
                   return;

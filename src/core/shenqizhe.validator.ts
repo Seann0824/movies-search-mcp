@@ -135,7 +135,7 @@ export class ShenQiZheValidatorService {
       // 确保资源正确清理
       try {
         if (page && !page.isClosed()) {
-          // await page.close();
+          await page.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭页面时出错:`, error);
@@ -143,7 +143,7 @@ export class ShenQiZheValidatorService {
 
       try {
         if (context) {
-          // await context.close();
+          await context.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭上下文时出错:`, error);
@@ -151,7 +151,7 @@ export class ShenQiZheValidatorService {
 
       try {
         if (browser) {
-          // await browser.close();
+          await browser.close();
         }
       } catch (error) {
         logger.error(`[ShenQiZheValidator] 关闭浏览器时出错:`, error);
